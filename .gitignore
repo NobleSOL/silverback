@@ -1,11 +1,39 @@
 # dependencies
 node_modules/
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # environment
 .env
+.env.local
+.env.*.local
 
 # build outputs
 dist/
 build/
-node_modules/ 
-.env 
+.cache/
+.next/
+out/
+
+# logs
+*.log
+*.log.*
+logs/
+
+# coverage / testing
+coverage/
+.vitest/
+jest-html-reporters-*
+cypress/videos/
+cypress/screenshots/
+
+# editor / system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
