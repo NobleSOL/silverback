@@ -1,3 +1,5 @@
+/* functions/swap.js */
+/* eslint-disable no-console */
 import * as KeetaNet from "@keetanetwork/keetanet-client";
 import { withCors } from "./cors.js";
 import {
@@ -9,49 +11,34 @@ import {
 } from "./utils/keeta.js";
 
 function parseRequest(event) {
-  if (!event?.body) {
-    return {};
-  }
-
+  if (!event?.body) return {};
   try {
     return JSON.parse(event.body);
-  } catch (error) {
+  } catch {
     throw new Error("Invalid JSON body");
   }
 }
 
 function normalizeString(value) {
-  if (typeof value !== "string") {
-    return "";
-  }
+  if (typeof value !== "string") return "";
   return value.trim();
 }
 
 function parseAmountRaw(value) {
-  if (value === undefined || value === null) {
-    return 0n;
-  }
+  if (value === undefined || value === null) return 0n;
   const normalized = normalizeString(String(value));
-  if (!normalized) {
-    return 0n;
-  }
+  if (!normalized) return 0n;
   try {
     return BigInt(normalized);
-  } catch (error) {
-    throw new Error(
-      "Swap amount must be a stringified integer representing the raw token amount"
-    );
+  } catch {
+    throw new Error("Swap amount must be a stringified integer representing the raw token amount");
   }
 }
 
 function resolveToken(context, address, symbol) {
-  if (!context?.tokens?.length) {
-    return null;
-  }
-
+  if (!context?.tokens?.length) return null;
   const normalizedAddress = normalizeString(address);
   const normalizedSymbol = normalizeString(symbol).toUpperCase();
-
   for (const token of context.tokens) {
     if (!token) continue;
     if (normalizedAddress && normalizeString(token.address) === normalizedAddress) {
@@ -61,10 +48,10 @@ function resolveToken(context, address, symbol) {
       return token;
     }
   }
-
   return null;
 }
 
+// 🔑 New: actually build + sign + submit tx
 async function executeSwap(client, context, params) {
   const poolAccount = KeetaNet.lib.Account.toAccount(context.pool.address);
   const tokenInAccount = KeetaNet.lib.Account.toAccount(params.tokenIn.address);
@@ -75,8 +62,16 @@ async function executeSwap(client, context, params) {
   builder.receive(poolAccount, params.amountOutRaw, tokenOutAccount, true);
 
   const blocks = await client.computeBuilderBlocks(builder);
-  const published = await client.publishBuilder(builder);
-  return { blocks, published };
+
+  let txHash = null;
+  if (EXECUTE_TRANSACTIONS) {
+    const published = await client.publishBuilder(builder);
+    const submitted = await client.submitBuilder(builder);
+    txHash = submitted?.transactionHash || null;
+    return { blocks, published, txHash };
+  }
+
+  return { blocks };
 }
 
 async function swap(event) {
@@ -100,26 +95,18 @@ async function swap(event) {
       tokenOutSymbol,
     } = payload;
 
-    if (!seed) {
-      throw new Error("A signer seed is required to execute a swap");
-    }
-    if (!tokenIn || !tokenOut) {
-      throw new Error("Both token addresses are required to execute a swap");
-    }
+    if (!seed) throw new Error("A signer seed is required to execute a swap");
+    if (!tokenIn || !tokenOut) throw new Error("Both token addresses are required");
 
     const amountInRaw = parseAmountRaw(amountIn);
-    if (amountInRaw <= 0n) {
-      throw new Error("Swap amount must be greater than zero");
-    }
-
-    const normalizedOverrides = { ...tokenAddresses };
+    if (amountInRaw <= 0n) throw new Error("Swap amount must be greater than zero");
 
     const poolOverride = normalizeString(poolId || poolAccount);
 
     client = await createClient({ seed, accountIndex });
     const context = await loadPoolContext(client, {
       poolAccount: poolOverride || undefined,
-      tokenAddresses: normalizedOverrides,
+      tokenAddresses: { ...tokenAddresses },
     });
 
     const tokenInDetails = resolveToken(context, tokenIn, tokenInSymbol);
@@ -128,7 +115,6 @@ async function swap(event) {
     if (!tokenInDetails || !tokenOutDetails) {
       throw new Error("Selected pool does not support the provided token pair");
     }
-
     if (tokenInDetails.requiresConfiguration || tokenOutDetails.requiresConfiguration) {
       throw new Error("Configure token contract addresses before swapping");
     }
@@ -136,17 +122,9 @@ async function swap(event) {
     const reserveIn = BigInt(tokenInDetails.reserveRaw || "0");
     const reserveOut = BigInt(tokenOutDetails.reserveRaw || "0");
 
-    const quote = calculateSwapQuote(
-      amountInRaw,
-      reserveIn,
-      reserveOut,
-      context.pool.feeBps
-    );
-
+    const quote = calculateSwapQuote(amountInRaw, reserveIn, reserveOut, context.pool.feeBps);
     if (quote.amountOut <= 0n) {
-      throw new Error(
-        "Swap amount is too small for the current pool reserves. Increase the input amount and try again."
-      );
+      throw new Error("Swap amount too small for current pool reserves");
     }
 
     const priceImpactPercent = Number.isFinite(quote.priceImpact)
@@ -170,7 +148,9 @@ async function swap(event) {
     const message = execution.error
       ? `Swap prepared but broadcast failed: ${execution.error}`
       : EXECUTE_TRANSACTIONS
-      ? "Swap prepared. Transaction broadcast attempted."
+      ? execution.txHash
+        ? `Swap submitted: ${execution.txHash}`
+        : "Swap prepared. Transaction broadcast attempted."
       : "Swap prepared. Set KEETA_EXECUTE_TRANSACTIONS=1 to broadcast automatically.";
 
     const response = {
@@ -189,6 +169,7 @@ async function swap(event) {
           address: tokenOutDetails.address,
           amountRaw: quote.amountOut.toString(),
           amountFormatted: formatAmount(quote.amountOut, tokenOutDetails.decimals || 0),
+          expectedRaw: quote.amountOut.toString(),
         },
       },
       priceImpact: priceImpactPercent,
@@ -196,25 +177,10 @@ async function swap(event) {
         attempted: EXECUTE_TRANSACTIONS,
         ...execution,
       },
-      instructions: {
-        send: {
-          to: context.pool.address,
-          token: tokenInDetails.address,
-          amountRaw: amountInRaw.toString(),
-        },
-        receive: {
-          from: context.pool.address,
-          token: tokenOutDetails.address,
-          amountRaw: quote.amountOut.toString(),
-        },
-      },
       message,
     };
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify(response),
-    };
+    return { statusCode: 200, body: JSON.stringify(response) };
   } catch (error) {
     console.error("Swap error", error);
     return {

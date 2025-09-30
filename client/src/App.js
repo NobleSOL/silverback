@@ -1212,11 +1212,33 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
       );
       if (amountOut <= 0n) {
         setToAmount("");
+        setQuoteDetails(null);
         return;
       }
-      setToAmount(formatAmount(amountOut, tokenOut.decimals));
+
+      const expectedFormatted = formatAmount(amountOut, tokenOut.decimals);
+
+      // 🔑 live slippage calc
+      const slippageMultiplier = BigInt(10_000 - slippageBps);
+      const minOutRaw = (amountOut * slippageMultiplier) / 10_000n;
+      const minimumFormatted = formatAmount(minOutRaw, tokenOut.decimals);
+
+      setToAmount(expectedFormatted);
+      setQuoteDetails({
+        tokens: {
+          from: { symbol: fromAsset },
+          to: {
+            symbol: toAsset,
+            expectedFormatted,
+            expectedRaw: amountOut.toString(),
+            minimumFormatted,
+          },
+        },
+        priceImpact: "—", // placeholder until swap response
+      });
     } catch (error) {
       setToAmount("");
+      setQuoteDetails(null);
     }
   }, [fromAmount, fromAsset, toAsset, poolData, tokenMap]);
 
@@ -1230,7 +1252,7 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
     setQuoteDetails(null);
   };
 
-  const handleSwap = async () => {
+    const handleSwap = async () => {
     if (!fromAmount) {
       setStatus("Enter an amount to swap");
       return;
@@ -1268,6 +1290,7 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
         ? { ...poolOverrides.tokenAddresses }
         : undefined;
       const poolOverrideAccount = (poolOverrides?.poolAccount || "").trim();
+
       const requestPayload = {
         seed: wallet.seed,
         poolId: poolAddress,
@@ -1282,6 +1305,7 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
       if (tokenOverrides && Object.keys(tokenOverrides).length > 0) {
         requestPayload.tokenAddresses = tokenOverrides;
       }
+
       const response = await fetch("/.netlify/functions/swap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1291,15 +1315,35 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
       if (!response.ok) {
         throw new Error(payload.error || "Swap failed");
       }
-      setQuoteDetails(null);
-      const toAmountFormatted = payload?.tokens?.to?.amountFormatted;
-      const toSymbolLabel = payload?.tokens?.to?.symbol || tokenOut.symbol;
-      const baseMessage = payload?.message || "Swap prepared.";
-      const summary =
-        toAmountFormatted && toSymbolLabel
-          ? `Swap prepared: ${toAmountFormatted} ${toSymbolLabel}. ${baseMessage}`
-          : baseMessage;
-      setStatus(summary);
+
+      // ✅ Store both expectedRaw + amountFormatted so summary rows stay in sync
+      setQuoteDetails({
+        tokens: {
+          from: {
+            symbol: payload?.tokens?.from?.symbol,
+            feePaidFormatted: payload?.tokens?.from?.feePaidFormatted,
+          },
+          to: {
+            symbol: payload?.tokens?.to?.symbol,
+            expectedFormatted: payload?.tokens?.to?.amountFormatted,
+            expectedRaw: payload?.tokens?.to?.expectedRaw, // <-- keep raw for calc
+            minimumFormatted: (() => {
+              try {
+                const outRaw = BigInt(payload?.tokens?.to?.expectedRaw || "0");
+                if (outRaw <= 0n) return payload?.tokens?.to?.amountFormatted;
+                const slippageMultiplier = BigInt(10_000 - slippageBps);
+                const minOutRaw = (outRaw * slippageMultiplier) / 10_000n;
+                return formatAmount(minOutRaw, tokenOut.decimals);
+              } catch {
+                return payload?.tokens?.to?.amountFormatted;
+              }
+            })(),
+          },
+        },
+        priceImpact: payload?.priceImpact,
+      });
+
+      setStatus(payload?.message || "Swap prepared.");
       refresh();
     } catch (error) {
       setStatus(`Swap failed: ${error.message}`);
@@ -1527,32 +1571,42 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
                 </div>
 
                 <div className="swap-summary">
-                  <div className="swap-summary__row">
-                    <span>Expected output</span>
-                    <span>
-                      {quoteDetails?.tokens?.to?.expectedFormatted || "—"} {quoteDetails?.tokens?.to?.symbol || toAsset}
-                    </span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>{`Minimum received (${slippagePercentDisplay})`}</span>
-                    <span>{quoteDetails?.tokens?.to?.minimumFormatted || "—"}</span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>Fee</span>
-                    <span>
-                      {quoteDetails?.tokens?.from?.feePaidFormatted || `${(poolData?.pool?.feeBps ?? 0) / 100}%`} {" "}
-                      {quoteDetails?.tokens?.from?.symbol || fromAsset}
-                    </span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>Price impact</span>
-                    <span>{quoteDetails ? `${quoteDetails.priceImpact} %` : "—"}</span>
-                  </div>
-                  <div className="swap-summary__row route-line">
-                    <span>Route</span>
-                    <span>{poolData?.pool?.address ? formatAddress(poolData.pool.address) : "—"}</span>
-                  </div>
-                </div>
+  <div className="swap-summary__row">
+    <span>Expected output</span>
+    <span>
+      {quoteDetails?.tokens?.to?.expectedFormatted || "—"}{" "}
+      {quoteDetails?.tokens?.to?.symbol || toAsset}
+    </span>
+  </div>
+  <div className="swap-summary__row">
+    <span>
+      Minimum received{" "}
+      {slippagePercentDisplay ? `(${slippagePercentDisplay})` : ""}
+    </span>
+    <span>
+      {quoteDetails?.tokens?.to?.minimumFormatted || "—"}{" "}
+      {quoteDetails?.tokens?.to?.symbol || toAsset}
+    </span>
+  </div>
+  <div className="swap-summary__row">
+    <span>Fee</span>
+    <span>
+      {quoteDetails?.tokens?.from?.feePaidFormatted ||
+        `${(poolData?.pool?.feeBps ?? 0) / 100}%`}{" "}
+      {quoteDetails?.tokens?.from?.symbol || fromAsset}
+    </span>
+  </div>
+  <div className="swap-summary__row">
+    <span>Price impact</span>
+    <span>{quoteDetails ? `${quoteDetails.priceImpact} %` : "—"}</span>
+  </div>
+  <div className="swap-summary__row route-line">
+    <span>Route</span>
+    <span>
+      {poolData?.pool?.address ? formatAddress(poolData.pool.address) : "—"}
+    </span>
+  </div>
+</div>
 
                 {poolStatusMessage && <div className="swap-alert">{poolStatusMessage}</div>}
 
