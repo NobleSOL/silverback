@@ -1,60 +1,39 @@
-import { createHash } from "node:crypto";
-import * as KeetaNet from "@keetanetwork/keetanet-client";
-import { withCors } from "./cors.js";
-import {
+const { createHash } = require("node:crypto");
+const KeetaNet = require("@keetanetwork/keetanet-client");
+const { withCors } = require("./cors.js");
+const {
   DEFAULT_NETWORK,
   decodeMetadata,
   formatAmount,
   loadOfflinePoolContext,
-} from "./utils/keeta.js";
+} = require("./utils/keeta.js");
 
 const HEX_SEED_REGEX = /^[0-9a-f]{64}$/i;
 
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-master
-master
 const DEFAULT_WALLET_TIMEOUT_MS = (() => {
   const candidates = [
     process.env.KEETA_WALLET_TIMEOUT_MS,
     process.env.KEETA_NETWORK_TIMEOUT_MS,
   ];
   for (const value of candidates) {
-    if (value === undefined || value === null || value === "") {
-      continue;
-    }
+    if (value === undefined || value === null || value === "") continue;
     const numeric = Number(value);
-    if (Number.isFinite(numeric) && numeric > 0) {
-      return numeric;
-    }
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
   }
   return 5000;
 })();
 
- codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-
-master
-master
-master
 function parseBody(body) {
   if (!body) return {};
   try {
     return JSON.parse(body);
-  } catch (error) {
+  } catch {
     throw new Error("Invalid JSON body");
   }
 }
 
 function normalizeSeed(seed) {
-  if (seed === undefined || seed === null) {
-    return "";
-  }
+  if (seed === undefined || seed === null) return "";
   return String(seed).trim();
 }
 
@@ -63,23 +42,16 @@ function hashSeedForOffline(seed) {
   return hashed.padEnd(64, "0").slice(0, 64);
 }
 
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-master
-master
 async function attemptWithTimeout(operation, options = {}) {
   const { label = "network operation", timeoutMs = DEFAULT_WALLET_TIMEOUT_MS } =
     options;
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`Timed out while waiting for ${label} after ${timeoutMs}ms`));
-    }, timeoutMs);
+    timeoutId = setTimeout(
+      () => reject(new Error(`Timed out while waiting for ${label} after ${timeoutMs}ms`)),
+      timeoutMs
+    );
   });
-
   const operationPromise = (async () => operation())();
 
   try {
@@ -94,20 +66,10 @@ async function attemptWithTimeout(operation, options = {}) {
     });
     return { ok: false, error };
   } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-
-master
-master
-master
 function deriveAccount(seed, accountIndex, allowOfflineFallback) {
   const normalizedSeed = normalizeSeed(seed);
   if (!normalizedSeed) {
@@ -130,52 +92,8 @@ function deriveAccount(seed, accountIndex, allowOfflineFallback) {
   };
 }
 
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-
-codex/update-addliquidity-and-removeliquidity-functions-ipb5ij
-master
-master
-master
-function parseOverrides(payload) {
-  if (!payload || typeof payload !== "object") {
-    return {};
-  }
-
-  const overrides = {};
-
-  if (payload.poolAccount) {
-    overrides.poolAccount = payload.poolAccount;
-  }
-
-  if (payload.lpTokenAccount) {
-    overrides.lpTokenAccount = payload.lpTokenAccount;
-  }
-
-  if (payload.tokenAddresses && typeof payload.tokenAddresses === "object") {
-    overrides.tokenAddresses = { ...payload.tokenAddresses };
-  }
-
-  return overrides;
-}
-
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-
-master
-master
-master
-master
 function parseAccountIndex(index) {
-  if (index === undefined || index === null || index === "") {
-    return 0;
-  }
+  if (index === undefined || index === null || index === "") return 0;
   const parsed = Number(index);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new Error("Account index must be a non-negative integer");
@@ -207,19 +125,10 @@ async function loadIdentifier(client, account) {
       metadata?.account,
     ];
     for (const value of possibleValues) {
-      if (!value) {
-        continue;
-      }
-      if (typeof value === "string") {
-        return value;
-      }
+      if (typeof value === "string") return value;
       if (typeof value === "object") {
-        if (typeof value?.address === "string") {
-          return value.address;
-        }
-        if (typeof value?.publicKeyString === "string") {
-          return value.publicKeyString;
-        }
+        if (typeof value?.address === "string") return value.address;
+        if (typeof value?.publicKeyString === "string") return value.publicKeyString;
       }
     }
   } catch (infoError) {
@@ -252,8 +161,7 @@ function buildOfflineWalletResponse({
       : {};
 
   const decimalsValue = Number(baseTokenContext.decimals);
-  const decimals =
-    Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
+  const decimals = Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
 
   return {
     seed: normalizedSeed,
@@ -285,42 +193,44 @@ async function walletHandler(event) {
   let normalizedSeed = "";
   let accountIndex = 0;
   let account = null;
-  let overrides = {};
   let offlineContext = null;
   let lastErrorMessage = "";
 
   try {
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-master
     const payload = parseBody(event.body);
-    overrides = parseOverrides(payload);
     accountIndex = parseAccountIndex(payload.accountIndex);
+
+    // ✅ If no seed provided, create a new wallet
+    if (!payload.seed) {
+      const seed = KeetaNet.lib.Account.randomSeed();
+      account = KeetaNet.lib.Account.fromSeed(seed, 0);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          seed,
+          accountIndex: 0,
+          address: account.publicKeyString.get(),
+          identifier: account.publicKeyString.get(),
+          network: DEFAULT_NETWORK,
+          baseToken: {
+            symbol: "KTA",
+            address: "",
+            decimals: 9,
+            balanceRaw: "0",
+            balanceFormatted: "0",
+          },
+          message: "New wallet generated",
+        }),
+      };
+    }
+
+    // Otherwise import existing seed
     const derived = deriveAccount(payload.seed, accountIndex, true);
     normalizedSeed = derived.normalizedSeed;
     account = derived.account;
 
-    offlineContext = await loadOfflinePoolContext(overrides);
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
+    offlineContext = await loadOfflinePoolContext();
 
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-
-codex/update-addliquidity-and-removeliquidity-functions-ipb5ij
-master
-    const payload = parseBody(event.body);
-    const { seed, accountIndex: rawIndex } = payload;
-    const accountIndex = parseAccountIndex(rawIndex);
-    const overrides = parseOverrides(payload);
-    const offlineContext = await loadOfflinePoolContext(overrides);
-    const { normalizedSeed, account } = deriveAccount(
-      seed,
-      accountIndex,
-      true
-    );
-master
-master
     if (offlineContext) {
       const response = buildOfflineWalletResponse({
         normalizedSeed,
@@ -329,420 +239,88 @@ master
         context: offlineContext,
         message: "Wallet details fetched from offline fixture",
       });
-
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-
-    const { seed, accountIndex: rawIndex } = parseBody(event.body);
-    const accountIndex = parseAccountIndex(rawIndex);
-    const offlineContext = await loadOfflinePoolContext();
-    const { normalizedSeed, account } = deriveAccount(
-      seed,
-      accountIndex,
-      Boolean(offlineContext)
-    );
-    if (offlineContext) {
-      const baseToken = offlineContext.baseToken || {};
-      const network = offlineContext.network || DEFAULT_NETWORK;
-      const address = account.publicKeyString.get();
-      const decimalsValue = Number(baseToken.decimals);
-      const decimals = Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address,
-        identifier: address,
-        network,
-        baseToken: {
-          symbol: baseToken.symbol || "KTA",
-          address: baseToken.address || "",
-          decimals,
-          metadata: baseToken.metadata || {},
-          balanceRaw: "0",
-          balanceFormatted: "0",
-        },
-        message: "Wallet details fetched from offline fixture",
-      };
-master
-
-master
-master
-master
-      return {
-        statusCode: 200,
-        body: JSON.stringify(response),
-      };
+      return { statusCode: 200, body: JSON.stringify(response) };
     }
 
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-codex/update-addliquidity-and-removeliquidity-functions-no9t62
-master
-master
-    try {
-      client = KeetaNet.UserClient.fromNetwork(DEFAULT_NETWORK, account);
-      const [identifierLookup, baseTokenLookup, balanceLookup] = await Promise.all([
-        attemptWithTimeout(() => loadIdentifier(client, account), {
-          label: "wallet identifier lookup",
-        }),
-        attemptWithTimeout(() => loadBaseTokenDetails(client), {
-          label: "base token metadata lookup",
-        }),
-        attemptWithTimeout(() => client.balance(client.baseToken, { account }), {
-          label: "base token balance lookup",
-        }),
-      ]);
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-
-      const identifierAddress = identifierLookup.ok
-        ? identifierLookup.value
-        : account.publicKeyString.get();
-
-      const baseTokenDetails = baseTokenLookup.ok
-        ? baseTokenLookup.value
-        : {
-            symbol: "KTA",
-            address: "",
-            decimals: 0,
-            metadata: {},
-            info: null,
-          };
-
-      const balanceRaw = balanceLookup.ok
-        ? BigInt(balanceLookup.value)
-        : 0n;
-
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address: account.publicKeyString.get(),
-        identifier: identifierAddress,
-        network: DEFAULT_NETWORK,
-        baseToken: {
-          symbol: baseTokenDetails.symbol,
-          address: baseTokenDetails.address || "",
-          decimals: baseTokenDetails.decimals ?? 0,
-          metadata: baseTokenDetails.metadata || {},
-          balanceRaw: balanceRaw.toString(),
-          balanceFormatted: formatAmount(
-            balanceRaw,
-            baseTokenDetails.decimals ?? 0
-          ),
-        },
-      };
-
-      const fallbackReasons = [];
-      if (!identifierLookup.ok) {
-        fallbackReasons.push("identifier");
-      }
-      if (!baseTokenLookup.ok) {
-        fallbackReasons.push("base token metadata");
-      }
-      if (!balanceLookup.ok) {
-        fallbackReasons.push("base token balance");
-      }
-
-      if (fallbackReasons.length) {
-        response.message = `Wallet details returned with fallback values for ${fallbackReasons.join(", ")}`;
-      }
-
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-
-      const identifierAddress = identifierLookup.ok
-        ? identifierLookup.value
-        : account.publicKeyString.get();
-
-      const baseTokenDetails = baseTokenLookup.ok
-        ? baseTokenLookup.value
-        : {
-            symbol: "KTA",
-            address: "",
-            decimals: 0,
-            metadata: {},
-            info: null,
-          };
-
-      const balanceRaw = balanceLookup.ok
-        ? BigInt(balanceLookup.value)
-        : 0n;
-
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address: account.publicKeyString.get(),
-        identifier: identifierAddress,
-        network: DEFAULT_NETWORK,
-        baseToken: {
-          symbol: baseTokenDetails.symbol,
-          address: baseTokenDetails.address || "",
-          decimals: baseTokenDetails.decimals ?? 0,
-          metadata: baseTokenDetails.metadata || {},
-          balanceRaw: balanceRaw.toString(),
-          balanceFormatted: formatAmount(
-            balanceRaw,
-            baseTokenDetails.decimals ?? 0
-          ),
-        },
-      };
-
-      const fallbackReasons = [];
-      if (!identifierLookup.ok) {
-        fallbackReasons.push("identifier");
-      }
-      if (!baseTokenLookup.ok) {
-        fallbackReasons.push("base token metadata");
-      }
-      if (!balanceLookup.ok) {
-        fallbackReasons.push("base token balance");
-      }
-
-      if (fallbackReasons.length) {
-        response.message = `Wallet details returned with fallback values for ${fallbackReasons.join(", ")}`;
-      }
-
-
-      const identifierAddress = identifierLookup.ok
-        ? identifierLookup.value
-        : account.publicKeyString.get();
-
-      const baseTokenDetails = baseTokenLookup.ok
-        ? baseTokenLookup.value
-        : {
-            symbol: "KTA",
-            address: "",
-            decimals: 0,
-            metadata: {},
-            info: null,
-          };
-
-      const balanceRaw = balanceLookup.ok
-        ? BigInt(balanceLookup.value)
-        : 0n;
-
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address: account.publicKeyString.get(),
-        identifier: identifierAddress,
-        network: DEFAULT_NETWORK,
-        baseToken: {
-          symbol: baseTokenDetails.symbol,
-          address: baseTokenDetails.address || "",
-          decimals: baseTokenDetails.decimals ?? 0,
-          metadata: baseTokenDetails.metadata || {},
-          balanceRaw: balanceRaw.toString(),
-          balanceFormatted: formatAmount(
-            balanceRaw,
-            baseTokenDetails.decimals ?? 0
-          ),
-        },
-      };
-
-      const fallbackReasons = [];
-      if (!identifierLookup.ok) {
-        fallbackReasons.push("identifier");
-      }
-      if (!baseTokenLookup.ok) {
-        fallbackReasons.push("base token metadata");
-      }
-      if (!balanceLookup.ok) {
-        fallbackReasons.push("base token balance");
-      }
-
-      if (fallbackReasons.length) {
-        response.message = `Wallet details returned with fallback values for ${fallbackReasons.join(
-          ", "
-        )}`;
-      }
-
-
-codex/update-addliquidity-and-removeliquidity-functions-ipb5ij
-    try {
-      client = KeetaNet.UserClient.fromNetwork(DEFAULT_NETWORK, account);
-      const identifierAddress = await loadIdentifier(client, account);
-
-      const baseToken = await loadBaseTokenDetails(client);
-      let balanceRaw;
-      try {
-        balanceRaw = await client.balance(client.baseToken, { account });
-      } catch (balanceError) {
-        console.warn("Falling back to zero balance for wallet", balanceError);
-        balanceRaw = 0n;
-      }
-
-codex/update-addliquidity-and-removeliquidity-functions-gkkb6z
-
-    const accountIndex = parseAccountIndex(rawIndex);
-    const account = KeetaNet.lib.Account.fromSeed(normalizedSeed, accountIndex);
-    const offlineContext = await loadOfflinePoolContext();
-    if (offlineContext) {
-      const baseToken = offlineContext.baseToken || {};
-      const network = offlineContext.network || DEFAULT_NETWORK;
-      const address = account.publicKeyString.get();
-      const decimalsValue = Number(baseToken.decimals);
-      const decimals = Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address,
-        identifier: address,
-        network,
-        baseToken: {
-          symbol: baseToken.symbol || "KTA",
-          address: baseToken.address || "",
-          decimals,
-          metadata: baseToken.metadata || {},
-          balanceRaw: "0",
-          balanceFormatted: "0",
-        },
-        message: "Wallet details fetched from offline fixture",
-      };
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify(response),
-      };
-    }
-
-master
     client = KeetaNet.UserClient.fromNetwork(DEFAULT_NETWORK, account);
-    const identifierAddress = await loadIdentifier(client, account);
 
-    const baseToken = await loadBaseTokenDetails(client);
-    let balanceRaw;
-    try {
-      balanceRaw = await client.balance(client.baseToken, { account });
-    } catch (balanceError) {
-      console.warn("Falling back to zero balance for wallet", balanceError);
-      balanceRaw = 0n;
+    const [identifierLookup, baseTokenLookup, balanceLookup] = await Promise.all([
+      attemptWithTimeout(() => loadIdentifier(client, account), {
+        label: "wallet identifier lookup",
+      }),
+      attemptWithTimeout(() => loadBaseTokenDetails(client), {
+        label: "base token metadata lookup",
+      }),
+      attemptWithTimeout(() => client.balance(client.baseToken, { account }), {
+        label: "base token balance lookup",
+      }),
+    ]);
+
+    const identifierAddress = identifierLookup.ok
+      ? identifierLookup.value
+      : account.publicKeyString.get();
+
+    const baseTokenDetails = baseTokenLookup.ok
+      ? baseTokenLookup.value
+      : {
+          symbol: "KTA",
+          address: "",
+          decimals: 0,
+          metadata: {},
+          info: null,
+        };
+
+    const balanceRaw = balanceLookup.ok ? BigInt(balanceLookup.value) : 0n;
+
+    const response = {
+      seed: normalizedSeed,
+      accountIndex,
+      address: account.publicKeyString.get(),
+      identifier: identifierAddress,
+      network: DEFAULT_NETWORK,
+      baseToken: {
+        symbol: baseTokenDetails.symbol,
+        address: baseTokenDetails.address || "",
+        decimals: baseTokenDetails.decimals ?? 0,
+        metadata: baseTokenDetails.metadata || {},
+        balanceRaw: balanceRaw.toString(),
+        balanceFormatted: formatAmount(balanceRaw, baseTokenDetails.decimals ?? 0),
+      },
+    };
+
+    if (!identifierLookup.ok || !baseTokenLookup.ok || !balanceLookup.ok) {
+      const missing = [];
+      if (!identifierLookup.ok) missing.push("identifier");
+      if (!baseTokenLookup.ok) missing.push("base token metadata");
+      if (!balanceLookup.ok) missing.push("base token balance");
+      response.message = `Wallet details returned with fallback values for ${missing.join(", ")}`;
     }
-master
 
-      const response = {
-        seed: normalizedSeed,
-        accountIndex,
-        address: account.publicKeyString.get(),
-        identifier: identifierAddress,
-        network: DEFAULT_NETWORK,
-        baseToken: {
-          symbol: baseToken.symbol,
-          address: baseToken.address,
-          decimals: baseToken.decimals,
-          metadata: baseToken.metadata,
-          balanceRaw: balanceRaw.toString(),
-          balanceFormatted: formatAmount(balanceRaw, baseToken.decimals),
-        },
-      };
-
-master
-master
-master
-      return {
-        statusCode: 200,
-        body: JSON.stringify(response),
-      };
-    } catch (networkError) {
-      console.warn(
-        "Failed to reach network for wallet lookup, returning stub response",
-        networkError
-      );
-
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-      const fixtureContext = offlineContext || (await loadOfflinePoolContext(overrides));
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-      const fixtureContext = offlineContext || (await loadOfflinePoolContext(overrides));
-
-master
-master
-      const response = buildOfflineWalletResponse({
-        normalizedSeed,
-        accountIndex,
-        account,
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
-        context: fixtureContext || { network: DEFAULT_NETWORK },
-        message:
-          (fixtureContext && fixtureContext.message) ||
-
-        
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-        context: fixtureContext || { network: DEFAULT_NETWORK },
-        message:
-          (fixtureContext && fixtureContext.message) ||
-
-        context: { network: DEFAULT_NETWORK },
-        message:
-master
-master
-          "Wallet details fetched without contacting the Keeta network",
-      });
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify(response),
-      };
-    }
+    return { statusCode: 200, body: JSON.stringify(response) };
   } catch (error) {
     lastErrorMessage = error?.message || "";
     console.error("wallet error", error);
 
     if (account) {
-      let fixtureContext = offlineContext;
-      if (!fixtureContext) {
-        try {
-          fixtureContext = await loadOfflinePoolContext(overrides);
-        } catch (fixtureError) {
-          console.warn("Failed to reload offline context during error fallback", fixtureError);
-        }
-      }
-
       const response = buildOfflineWalletResponse({
         normalizedSeed,
         accountIndex,
         account,
-        context: fixtureContext || { network: DEFAULT_NETWORK },
-        message:
-          (fixtureContext && fixtureContext.message) ||
-          (lastErrorMessage
-            ? `Wallet details returned without contacting the network (${lastErrorMessage})`
-            : "Wallet details returned without contacting the network"),
+        context: { network: DEFAULT_NETWORK },
+        message: `Wallet details returned without contacting the network (${lastErrorMessage})`,
       });
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify(response),
-      };
+      return { statusCode: 200, body: JSON.stringify(response) };
     }
 
-    const statusCode = /seed|hex|index/i.test(lastErrorMessage) ? 400 : 500;
     return {
-      statusCode,
+      statusCode: /seed|hex|index/i.test(lastErrorMessage) ? 400 : 500,
       body: JSON.stringify({ error: lastErrorMessage || "Wallet lookup failed" }),
     };
   } finally {
     if (client && typeof client.destroy === "function") {
-codex/update-addliquidity-and-removeliquidity-functions-blqnrv
       const destroyResult = await attemptWithTimeout(() => client.destroy(), {
         label: "Keeta client cleanup",
       });
-
-codex/update-addliquidity-and-removeliquidity-functions-u8dz3r
-      const destroyResult = await attemptWithTimeout(() => client.destroy(), {
-        label: "Keeta client cleanup",
-      });
-
-      const destroyResult = await attemptWithTimeout(
-        () => client.destroy(),
-        { label: "Keeta client cleanup" }
-      );
-master
-master
       if (!destroyResult.ok) {
         console.warn("Failed to destroy Keeta client", destroyResult.error);
       }
@@ -750,4 +328,4 @@ master
   }
 }
 
-export const handler = withCors(walletHandler);
+exports.handler = withCors(walletHandler);

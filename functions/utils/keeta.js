@@ -691,6 +691,44 @@ async function loadPoolContext(client, overrides = {}) {
     missingTokenSymbols,
   };
 }
+/**
+ * Create a new Keeta wallet from a random seed
+ */
+async function createWallet() {
+  const seed = KeetaNet.lib.Account.randomSeed();
+  const account = KeetaNet.lib.Account.fromSeed(seed, 0);
+  return {
+    seed,
+    address: account.publicKeyString.get(),
+    account,
+  };
+}
+
+/**
+ * Import an existing wallet from a provided seed (DNA)
+ */
+async function importWallet(seed, accountIndex = 0) {
+  const account = KeetaNet.lib.Account.fromSeed(seed, accountIndex);
+  return {
+    seed,
+    address: account.publicKeyString.get(),
+    account,
+  };
+}
+
+/**
+ * Get KTA balance for an address
+ */
+async function getBalance(client, address) {
+  try {
+    const account = KeetaNet.lib.Account.toAccount(address);
+    const balance = await client.client.getTokenBalance(account);
+    return balance.toString(); // raw string; can format as needed
+  } catch (err) {
+    console.error("Failed to fetch balance:", err);
+    return "0";
+  }
+}
 
 export {
   DEFAULT_NETWORK,
@@ -708,4 +746,7 @@ export {
   loadPoolContext,
   loadTokenDetails,
   toRawAmount,
+  createWallet,
+  importWallet,
+  getBalance,
 };
