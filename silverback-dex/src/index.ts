@@ -195,6 +195,10 @@ app.post('/settle/swap', async (req: any, res: any, next: any) => {
       res.status(404).send('intent not found');
       return;
     }
+    if (intent.status !== 'FILLED') {
+      res.status(400).send('Intent not ready for settlement (must be FILLED)');
+      return;
+    }
 
     const rIn = await balanceOf(intent.tokenIn);
     const rOut = await balanceOf(intent.tokenOut);
@@ -227,6 +231,10 @@ app.post('/settle/lp/remove', async (req: any, res: any, next: any) => {
     const intent = inbox.get(id);
     if (!intent || intent.kind !== 'LPREM') {
       res.status(404).send('intent not found');
+      return;
+    }
+    if (intent.status !== 'FILLED') {
+      res.status(400).send('Intent not ready for settlement (must be FILLED)');
       return;
     }
 

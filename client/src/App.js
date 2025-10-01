@@ -615,7 +615,11 @@ function WalletControls({ wallet, onWalletChange }) {
     const response = await fetch("/.netlify/functions/wallet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seed: seedValue, accountIndex: accountIndexValue }),
+      body: JSON.stringify({
+        seed: seedValue,
+        accountIndex: accountIndexValue,
+        allowOfflineFallback: true,
+      }),
     });
 
     const text = await response.text();
