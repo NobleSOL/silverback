@@ -696,6 +696,20 @@ body {
   color: rgba(255, 255, 255, 0.35);
 }
 
+.checkbox-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.checkbox-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-primary);
+}
+
 .small-action {
   position: absolute;
   right: 8px;

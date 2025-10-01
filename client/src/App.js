@@ -39,6 +39,7 @@ const DEFAULT_POOL_OVERRIDES = Object.freeze({
   }),
 });
 const POOL_OVERRIDE_STORAGE_KEY = "silverback.pool.overrides";
+const WALLET_FORCE_NETWORK_STORAGE_KEY = "silverback.wallet.forceNetwork";
 
 function cloneOverrides(overrides = {}) {
   const clone = {};
@@ -599,6 +600,22 @@ function WalletControls({ wallet, onWalletChange }) {
   const [seedInput, setSeedInput] = useState(wallet.seed || "");
   const [indexInput, setIndexInput] = useState(wallet.index || 0);
   const [status, setStatus] = useState("");
+  const [preferLiveNetwork, setPreferLiveNetwork] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    try {
+      const stored = window.localStorage.getItem(
+        WALLET_FORCE_NETWORK_STORAGE_KEY
+      );
+      if (!stored) {
+        return false;
+      }
+      return stored === "1" || stored.toLowerCase() === "true";
+    } catch (error) {
+      return false;
+    }
+  });
   const balances = wallet.balances || [];
   const balanceLoading = Boolean(wallet.balanceLoading);
   const balanceError = wallet.balanceError || "";
@@ -608,32 +625,58 @@ function WalletControls({ wallet, onWalletChange }) {
     setIndexInput(wallet.index || 0);
   }, [wallet.seed, wallet.index]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      if (preferLiveNetwork) {
+        window.localStorage.setItem(
+          WALLET_FORCE_NETWORK_STORAGE_KEY,
+          "1"
+        );
+      } else {
+        window.localStorage.removeItem(WALLET_FORCE_NETWORK_STORAGE_KEY);
+      }
+    } catch (error) {
+      /* ignore storage errors */
+    }
+  }, [preferLiveNetwork]);
+
   const baseTokenBalance = resolveBaseTokenBalance(wallet.baseToken);
   const walletLoading = Boolean(wallet.loading);
 
-  const requestWalletDetails = useCallback(async (seedValue, accountIndexValue) => {
-    const response = await fetch("/.netlify/functions/wallet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seed: seedValue, accountIndex: accountIndexValue }),
-    });
+  const requestWalletDetails = useCallback(
+    async (seedValue, accountIndexValue) => {
+      const response = await fetch("/.netlify/functions/wallet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seed: seedValue,
+          accountIndex: accountIndexValue,
+          forceNetwork: Boolean(preferLiveNetwork),
+          allowOfflineFallback: !preferLiveNetwork,
+        }),
+      });
 
-    const text = await response.text();
-    let payload = {};
-    if (text) {
-      try {
-        payload = parseWalletResponse(text);
-      } catch (error) {
-        throw new Error(error.message || "Invalid wallet response");
+      const text = await response.text();
+      let payload = {};
+      if (text) {
+        try {
+          payload = parseWalletResponse(text);
+        } catch (error) {
+          throw new Error(error.message || "Invalid wallet response");
+        }
       }
-    }
 
-    if (!response.ok) {
-      throw new Error(payload.error || "Failed to load wallet details");
-    }
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load wallet details");
+      }
 
-    return payload;
-  }, []);
+      return payload;
+    },
+    [preferLiveNetwork]
+  );
 
   const handleGenerate = () => {
     const generated = KeetaLib.Account.generateRandomSeed({ asString: true });
@@ -768,6 +811,19 @@ function WalletControls({ wallet, onWalletChange }) {
         />
         <p className="field-caption">
           Derives alternate wallet addresses from the same seed (advanced). Use 0 for the primary account.
+        </p>
+      </div>
+      <div className="field-group">
+        <label className="checkbox-toggle">
+          <input
+            type="checkbox"
+            checked={preferLiveNetwork}
+            onChange={(event) => setPreferLiveNetwork(event.target.checked)}
+          />
+          <span>Prefer live network (disable offline fallback)</span>
+        </label>
+        <p className="field-caption">
+          When disabled, wallet requests fall back to the offline fixture if the live backend is unavailable.
         </p>
       </div>
       <div className="field-group">
