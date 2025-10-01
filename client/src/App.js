@@ -1240,7 +1240,8 @@ function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
       setToAmount("");
       setQuoteDetails(null);
     }
-  }, [fromAmount, fromAsset, toAsset, poolData, tokenMap]);
+  }, [fromAmount, fromAsset, toAsset, poolData, tokenMap, slippageBps]);
+
 
   const flipDirection = () => {
     const previousFrom = fromToken;
