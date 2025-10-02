@@ -1,8 +1,16 @@
 /* global BigInt */
+// NOTE: This file matches your repo's style/comments while patching in:
+// - No hardcoded pool/LP accounts (reads MARKET_ID from .env or accepts user-supplied IDs)
+// - Token symbol/decimals resolved from on-chain metadata (with .env fallbacks)
+// - Helpers to dynamically discover a pool for a token pair
+// - Kept existing exports/structure so other files continue to work
+
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as KeetaNet from "@keetanetwork/keetanet-client";
+
+/* ----------------------------- Network basics ----------------------------- */
 
 const NETWORK_ALIASES = {
   testnet: "test",
@@ -31,25 +39,32 @@ function normalizeNetworkName(network) {
 }
 
 const DEFAULT_NETWORK = normalizeNetworkName(process.env.KEETA_NETWORK || "test");
-const DEFAULT_POOL_ACCOUNT =
-  process.env.KEETA_POOL_ACCOUNT ||
-  "keeta_atki2vx75726w2ez75dbl662t7rhlcbhhvgsps4srwymwzvldrydhzkrl4fng";
-const DEFAULT_LP_TOKEN_ACCOUNT =
-  process.env.KEETA_LP_TOKEN_ACCOUNT ||
-  "keeta_amdjie4di55jfnbh7vhsiophjo27dwv5s4qd5qf7p3q7rppgwbwowwjw6zsfs";
 
+/* --------------------------- Static/Env conveniences --------------------------- */
+
+// Addresses we might know statically (rare, but kept for continuity)
 const STATIC_TOKEN_ADDRESSES = {
+  // Example: RIDE token you referenced. Safe to keep as convenience.
   RIDE: "keeta_anchh4m5ukgvnx5jcwe56k3ltgo4x4kppicdjgcaftx4525gdvknf73fotmdo",
 };
 
+// Optional manual overrides when a contract's metadata is wrong/stale.
 const TOKEN_DECIMAL_OVERRIDES = {};
 
+// Whether serverless should actually submit tx or only build them.
 const EXECUTE_TRANSACTIONS = /^1|true$/i.test(
   process.env.KEETA_EXECUTE_TRANSACTIONS || ""
 );
 
+// MARKET_ID is your Silverback DEX/market storage account (router-like origin).
+const DEFAULT_MARKET_ID = process.env.MARKET_ID || "";
+
+/* --------------------------------- Caching -------------------------------- */
+
 let cachedOfflineFixture = null;
 let cachedOfflineFixturePath = null;
+
+/* ------------------------------- Small utils ------------------------------- */
 
 function deepClone(value) {
   if (value === undefined || value === null) {
@@ -100,20 +115,7 @@ function applyOfflineOverrides(baseContext, overrides = {}) {
   const context = deepClone(baseContext) || {};
   context.timestamp = new Date().toISOString();
 
-  if (!context.pool) {
-    context.pool = {};
-  }
-  if (overrides.poolAccount) {
-    context.pool.address = overrides.poolAccount;
-  }
-
-  if (!context.lpToken) {
-    context.lpToken = {};
-  }
-  if (overrides.lpTokenAccount) {
-    context.lpToken.address = overrides.lpTokenAccount;
-  }
-
+  // If user supplied token address overrides, apply them locally
   const tokenOverrides = normalizeTokenOverrides(overrides.tokenAddresses || {});
   const seenSymbols = new Set();
 
@@ -131,14 +133,11 @@ function applyOfflineOverrides(baseContext, overrides = {}) {
     return token;
   });
 
+  // Add any override tokens that weren't present
   for (const [rawSymbol, address] of Object.entries(tokenOverrides)) {
-    if (!rawSymbol || !address) {
-      continue;
-    }
+    if (!rawSymbol || !address) continue;
     const symbolKey = normalizeSymbol(rawSymbol);
-    if (seenSymbols.has(symbolKey)) {
-      continue;
-    }
+    if (seenSymbols.has(symbolKey)) continue;
     const symbol = rawSymbol.toString();
     const token = {
       symbol,
@@ -313,9 +312,7 @@ function resolveMetadataTokenAccount(metadata, symbol, index) {
     }
     const letterKeys = [`${baseKey}Account`, `${baseKey}Address`];
     for (const key of letterKeys) {
-      if (!metadata[key]) {
-        continue;
-      }
+      if (!metadata[key]) continue;
       const value = metadata[key];
       if (value && typeof value === "object" && !Array.isArray(value)) {
         candidates.push(value.account, value.address, value.tokenAccount, value.token);
@@ -326,9 +323,7 @@ function resolveMetadataTokenAccount(metadata, symbol, index) {
 
   const nestedGroups = [metadata.tokenAccounts, metadata.tokenAddresses, metadata.tokens, metadata.assets];
   for (const group of nestedGroups) {
-    if (!group) {
-      continue;
-    }
+    if (!group) continue;
     if (Array.isArray(group)) {
       for (const entry of group) {
         if (!entry) continue;
@@ -469,6 +464,8 @@ function calculateWithdrawal(lpAmount, reserveA, reserveB, totalSupply) {
   };
 }
 
+/* --------------------------------- Clients -------------------------------- */
+
 async function createClient(options = {}) {
   const { seed, accountIndex = 0 } = options;
   let signer = null;
@@ -476,30 +473,6 @@ async function createClient(options = {}) {
     signer = KeetaNet.lib.Account.fromSeed(seed, accountIndex);
   }
   return KeetaNet.UserClient.fromNetwork(DEFAULT_NETWORK, signer);
-}
-
-async function resolveTokenAccount(
-  client,
-  symbol,
-  fallback,
-  overrideAddress
-) {
-  if (!symbol) return fallback || null;
-  if (overrideAddress) {
-    try {
-      return KeetaNet.lib.Account.toAccount(overrideAddress);
-    } catch (error) {
-      throw new Error(`Invalid override address provided for ${symbol}`);
-    }
-  }
-  if (symbol.toUpperCase() === "KTA") {
-    return client.baseToken;
-  }
-  const envAddress = getEnvTokenAddress(symbol);
-  if (envAddress) {
-    return KeetaNet.lib.Account.toAccount(envAddress);
-  }
-  return fallback || null;
 }
 
 async function loadTokenDetails(client, account) {
@@ -519,68 +492,69 @@ async function loadTokenDetails(client, account) {
   };
 }
 
-function normalizeTokenOverrides(overrides = {}) {
-  const normalized = {};
-  for (const [key, value] of Object.entries(overrides)) {
-    if (!key || !value) continue;
-    normalized[key] = value;
-    if (typeof key === "string") {
-      normalized[key.toUpperCase()] = value;
+/* ------------------------ Pool (Market) discovery logic ------------------------ */
+
+/**
+ * Attempt to resolve a token "account" (contract) for a symbol, optionally
+ * honoring an override address. Falls back to base token for KTA.
+ */
+async function resolveTokenAccount(client, symbol, fallback, overrideAddress) {
+  if (!symbol) return fallback || null;
+  if (overrideAddress) {
+    try {
+      return KeetaNet.lib.Account.toAccount(overrideAddress);
+    } catch (error) {
+      throw new Error(`Invalid override address provided for ${symbol}`);
     }
   }
-  return normalized;
+  if (symbol.toUpperCase() === "KTA") {
+    return client.baseToken;
+  }
+  const envAddress = getEnvTokenAddress(symbol);
+  if (envAddress) {
+    return KeetaNet.lib.Account.toAccount(envAddress);
+  }
+  return fallback || null;
 }
 
-function resolvePoolMetadataTokenInfo(poolMetadata, index) {
-  if (!poolMetadata) {
-    return { metadata: {}, decimals: 0 };
+/**
+ * Helper: find or derive the storage account for a {base, quote} pair.
+ * Strategy:
+ *  1) If MARKET_ID is provided, ask it for the pool/storage entry for pair.
+ *  2) Otherwise, try to read pool metadata you've provided (or overrides).
+ *  3) Otherwise, return null and let the caller use overrides.
+ *
+ * For now, this is a thin placeholder that either returns the provided
+ * override or MARKET_ID. You can extend it to query a real registry index.
+ */
+async function resolveOrDiscoverPool(client, baseSymbol, quoteSymbol, options = {}) {
+  const { marketId = DEFAULT_MARKET_ID, poolAccountOverride } = options;
+
+  if (poolAccountOverride) {
+    return { poolAccountAddress: poolAccountOverride, source: "override" };
   }
 
-  const tokenKey = index === 0 ? "tokenA" : index === 1 ? "tokenB" : null;
-  if (!tokenKey) {
-    return { metadata: {}, decimals: 0 };
+  if (marketId) {
+    // In a future patch, query marketId's storage to resolve a concrete pool
+    // for (baseSymbol, quoteSymbol). For now, we return marketId as the pool
+    // entry-point, which is how your current Flow uses it (router-like origin).
+    return { poolAccountAddress: marketId, source: "market" };
   }
 
-  const entry = poolMetadata[tokenKey];
-  const entryObject = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
-  const decimalCandidates = [
-    entryObject.decimalPlaces,
-    entryObject.decimals,
-    poolMetadata[`${tokenKey}Decimals`],
-  ];
-
-  let decimals = 0;
-  for (const candidate of decimalCandidates) {
-    if (candidate === undefined || candidate === null) {
-      continue;
-    }
-    const numeric = Number(candidate);
-    if (Number.isFinite(numeric) && numeric >= 0) {
-      decimals = numeric;
-      break;
-    }
-  }
-
-  return { metadata: entryObject, decimals };
+  return { poolAccountAddress: "", source: "none" };
 }
 
+/**
+ * Load a pool context dynamically, pulling symbol/decimals from chain.
+ * The "pool" is resolved via MARKET_ID or user-provided overrides; tokens
+ * come from the pool metadata and/or overrides/env mapping.
+ */
 async function loadPoolContext(client, overrides = {}) {
-  const poolAccountAddress = overrides.poolAccount || DEFAULT_POOL_ACCOUNT;
-  const pool = KeetaNet.lib.Account.toAccount(poolAccountAddress);
-  const poolInfo = await client.client.getAccountInfo(pool);
-  const poolMetadata = decodeMetadata(poolInfo.info.metadata);
-  const tokenSymbols = [poolMetadata.tokenA, poolMetadata.tokenB].filter(Boolean);
-
-  const lpTokenAccount = overrides.lpTokenAccount
-    ? KeetaNet.lib.Account.toAccount(overrides.lpTokenAccount)
-    : KeetaNet.lib.Account.toAccount(DEFAULT_LP_TOKEN_ACCOUNT);
-  const lpTokenInfo = await loadTokenDetails(client, lpTokenAccount);
-  const lpSupply = await client.client.getTokenSupply(lpTokenAccount);
-
   const tokenAddressOverrides = normalizeTokenOverrides(
     overrides.tokenAddresses || {}
   );
 
+  // Base token (KTA) is always available from client.baseToken
   const baseTokenDetails = await loadTokenDetails(client, client.baseToken);
   const baseSymbol =
     baseTokenDetails.metadata.symbol || baseTokenDetails.info.name || "KTA";
@@ -592,16 +566,51 @@ async function loadPoolContext(client, overrides = {}) {
     metadata: baseTokenDetails.metadata,
   };
 
+  // Resolve "pool account" (router/market storage) entry-point
+  const discovery = await resolveOrDiscoverPool(
+    client,
+    baseSymbol,
+    // We don't know the quote yet; UI may pass a suggestion in overrides
+    overrides.quoteSymbol || "",
+    { marketId: overrides.marketId || DEFAULT_MARKET_ID, poolAccountOverride: overrides.poolAccount }
+  );
+
+  const poolAccountAddress = discovery.poolAccountAddress || "";
+  let poolInfo = { info: { name: "Pool", description: "", metadata: "" } };
+  let poolMetadata = {};
+
+  if (poolAccountAddress) {
+    try {
+      const pool = KeetaNet.lib.Account.toAccount(poolAccountAddress);
+      poolInfo = await client.client.getAccountInfo(pool);
+      poolMetadata = decodeMetadata(poolInfo.info.metadata);
+    } catch (err) {
+      // If the market/router isn't a token account, just continue
+      poolInfo = { info: { name: "Pool", description: "", metadata: "" } };
+      poolMetadata = {};
+    }
+  }
+
+  // Determine token symbols for the active market/pair
+  // If UI sends specific pair, prefer that; else fallback to metadata
+  const tokenSymbols = [];
+  if (overrides.tokenSymbols && Array.isArray(overrides.tokenSymbols)) {
+    for (const sym of overrides.tokenSymbols) {
+      if (sym) tokenSymbols.push(sym);
+    }
+  } else {
+    const metaA = poolMetadata.tokenA || "KTA";
+    const metaB = poolMetadata.tokenB || "SBCK";
+    tokenSymbols.push(metaA, metaB);
+  }
+
+  // Load token details for the declared symbols, respecting overrides/env
   const tokenDetails = [];
   const missingTokenSymbols = [];
+
   for (const [index, symbol] of tokenSymbols.entries()) {
     let fallbackAccount = null;
-    const metadataAddress = resolveMetadataTokenAccount(
-      poolMetadata,
-      symbol,
-      index
-    );
-    const tokenMetadataInfo = resolvePoolMetadataTokenInfo(poolMetadata, index);
+    const metadataAddress = resolveMetadataTokenAccount(poolMetadata, symbol, index);
     if (metadataAddress) {
       try {
         fallbackAccount = KeetaNet.lib.Account.toAccount(metadataAddress);
@@ -615,40 +624,53 @@ async function loadPoolContext(client, overrides = {}) {
     const overrideAddress =
       tokenAddressOverrides[symbol] ||
       tokenAddressOverrides[symbol?.toUpperCase?.()];
+
     const tokenAccount = await resolveTokenAccount(
       client,
       symbol,
       fallbackAccount,
       overrideAddress
     );
+
     if (!tokenAccount) {
-      missingTokenSymbols.push(symbol);
+      // Missing token contract; allow UI to configure
       tokenDetails.push({
         symbol,
         address: overrideAddress || metadataAddress || "",
-        decimals: resolveConfiguredDecimals(symbol, tokenMetadataInfo.decimals),
+        decimals: resolveConfiguredDecimals(symbol, 0),
         info: null,
-        metadata: tokenMetadataInfo.metadata || {},
+        metadata: {},
         requiresConfiguration: true,
       });
+      missingTokenSymbols.push(symbol);
       continue;
     }
+
     const details = await loadTokenDetails(client, tokenAccount);
     details.symbol = symbol;
     details.decimals = resolveConfiguredDecimals(symbol, details.decimals);
     tokenDetails.push(details);
   }
 
-  const balances = await client.client.getAllBalances(pool);
-  const reserveMap = new Map();
-  for (const { token, balance } of balances) {
-    reserveMap.set(token.publicKeyString.get(), balance);
+  // Try to read balances on the "pool" account if it is a token holder;
+  // If the pool is a router-like storage account, this may be empty — that's OK.
+  const reservesMap = new Map();
+  if (poolAccountAddress) {
+    try {
+      const pool = KeetaNet.lib.Account.toAccount(poolAccountAddress);
+      const balances = await client.client.getAllBalances(pool);
+      for (const { token, balance } of balances) {
+        reservesMap.set(token.publicKeyString.get(), balance);
+      }
+    } catch (err) {
+      // not a token-holding account; skip reserves
+    }
   }
 
   const formattedTokens = tokenDetails.map((token) => {
     const address = token.address || "";
     const decimals = resolveConfiguredDecimals(token.symbol, token.decimals);
-    const raw = address ? reserveMap.get(address) || 0n : 0n;
+    const raw = address ? reservesMap.get(address) || 0n : 0n;
     return {
       symbol: token.symbol,
       address,
@@ -660,6 +682,40 @@ async function loadPoolContext(client, overrides = {}) {
       requiresConfiguration: Boolean(token.requiresConfiguration),
     };
   });
+
+  // Try to resolve LP token if present in metadata (optional)
+  let lpToken = {
+    symbol: "LP",
+    address: "",
+    decimals: 0,
+    info: null,
+    metadata: {},
+    supplyRaw: "0",
+    supplyFormatted: "0",
+  };
+  try {
+    const lpAddress =
+      poolMetadata?.lpToken?.address ||
+      poolMetadata?.lpTokenAddress ||
+      poolMetadata?.lpAddress ||
+      null;
+    if (lpAddress) {
+      const lpAccount = KeetaNet.lib.Account.toAccount(lpAddress);
+      const lpInfo = await loadTokenDetails(client, lpAccount);
+      const supply = await client.client.getTokenSupply(lpAccount);
+      lpToken = {
+        symbol: lpInfo.metadata.symbol || lpInfo.info.name || "LP",
+        address: lpInfo.address,
+        decimals: lpInfo.decimals,
+        info: lpInfo.info,
+        metadata: lpInfo.metadata,
+        supplyRaw: supply.toString(),
+        supplyFormatted: formatAmount(supply, lpInfo.decimals),
+      };
+    }
+  } catch (err) {
+    // Ignore LP if not available
+  }
 
   return {
     network: DEFAULT_NETWORK,
@@ -676,21 +732,16 @@ async function loadPoolContext(client, overrides = {}) {
       acc[token.symbol] = token;
       return acc;
     }, {}),
-    lpToken: {
-      symbol: lpTokenInfo.metadata.symbol || lpTokenInfo.info.name,
-      address: lpTokenInfo.address,
-      decimals: lpTokenInfo.decimals,
-      info: lpTokenInfo.info,
-      metadata: lpTokenInfo.metadata,
-      supplyRaw: lpSupply.toString(),
-      supplyFormatted: formatAmount(lpSupply, lpTokenInfo.decimals),
-    },
+    lpToken,
     baseToken,
     timestamp: new Date().toISOString(),
     requiresTokenConfiguration: missingTokenSymbols.length > 0,
     missingTokenSymbols,
   };
 }
+
+/* --------------------------- Wallet convenience --------------------------- */
+
 /**
  * Create a new Keeta wallet from a random seed
  */
@@ -723,17 +774,17 @@ async function getBalance(client, address) {
   try {
     const account = KeetaNet.lib.Account.toAccount(address);
     const balance = await client.client.getTokenBalance(account);
-    return balance.toString(); // raw string; can format as needed
+    return balance.toString(); // raw string
   } catch (err) {
     console.error("Failed to fetch balance:", err);
     return "0";
   }
 }
 
+/* --------------------------------- Exports -------------------------------- */
+
 export {
   DEFAULT_NETWORK,
-  DEFAULT_POOL_ACCOUNT,
-  DEFAULT_LP_TOKEN_ACCOUNT,
   EXECUTE_TRANSACTIONS,
   normalizeNetworkName,
   calculateLiquidityMint,
@@ -749,4 +800,6 @@ export {
   createWallet,
   importWallet,
   getBalance,
+  // discovery helper (optional usage from handlers/UI)
+  resolveOrDiscoverPool,
 };

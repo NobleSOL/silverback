@@ -1,250 +1,127 @@
-import * as KeetaNet from "@keetanetwork/keetanet-client";
+// functions/addLiquidity.js
 import { withCors } from "./cors.js";
 import {
-  EXECUTE_TRANSACTIONS,
-  calculateLiquidityMint,
   createClient,
-  formatAmount,
-  loadOfflinePoolContext,
-  loadPoolContext,
+  resolveOrDiscoverPool,
+  loadTokenDetails,
   toRawAmount,
+  formatAmount,
+  calculateLiquidityMint,
 } from "./utils/keeta.js";
 
 function parseBody(body) {
   if (!body) return {};
   try {
-    return JSON.parse(body);
-  } catch (error) {
-    throw new Error("Invalid JSON body");
+    const parsed = JSON.parse(body);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
   }
 }
 
-async function executeAddLiquidity(client, context, params) {
-  const poolAccount = KeetaNet.lib.Account.toAccount(context.pool.address);
-  const tokenAAccount = KeetaNet.lib.Account.toAccount(params.tokenA.address);
-  const tokenBAccount = KeetaNet.lib.Account.toAccount(params.tokenB.address);
-  const lpTokenAccount = KeetaNet.lib.Account.toAccount(context.lpToken.address);
-
-  const builder = client.initBuilder();
-  builder.send(poolAccount, params.amountARaw, tokenAAccount);
-  builder.send(poolAccount, params.amountBRaw, tokenBAccount);
-  builder.receive(poolAccount, params.mintedRaw, lpTokenAccount, true);
-
-  const blocks = await client.computeBuilderBlocks(builder);
-  const published = await client.publishBuilder(builder);
-  return { blocks, published };
+function bigintReplacer(_k, v) {
+  return typeof v === "bigint" ? v.toString() : v;
 }
 
-async function addLiquidityHandler(event) {
-  if (event.httpMethod && event.httpMethod.toUpperCase() === "OPTIONS") {
+export const handler = withCors(async (event) => {
+  if (event.httpMethod?.toUpperCase() === "OPTIONS") {
     return { statusCode: 204, body: "" };
   }
 
-  let client;
   try {
-    const payload = parseBody(event.body);
     const {
-      tokenA,
-      tokenB,
-      amountA,
-      amountB,
       seed,
       accountIndex = 0,
-      tokenAddresses: rawTokenAddresses = {},
-      tokenAAddress,
-      tokenBAddress,
       poolAccount,
-      lpTokenAccount,
-    } = payload;
+      marketId,
+      tokenAddresses,
+      tokenA,          // symbol hint (optional)
+      tokenB,          // symbol hint (optional)
+      tokenAAddress,   // optional override
+      tokenBAddress,   // optional override
+      amountA,         // human string
+      amountB,         // human string
+    } = parseBody(event.body);
 
-    if (!tokenA || !tokenB) {
-      throw new Error("Token symbols are required");
+    if (!seed) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Missing seed" }) };
     }
     if (!amountA || !amountB) {
-      throw new Error("Both token amounts are required to add liquidity");
-    }
-    if (!seed) {
-      throw new Error("A signer seed is required to add liquidity");
+      return { statusCode: 400, body: JSON.stringify({ error: "Missing liquidity amounts" }) };
     }
 
-    const normalizedOverrides = { ...rawTokenAddresses };
-    if (tokenAAddress) {
-      normalizedOverrides[tokenA] = tokenAAddress.trim();
+    const client = await createClient({ seed, accountIndex });
+
+    // 🔑 dynamically resolve or discover pool
+    const { poolRef, lpTokenRef, tokenARef, tokenBRef, feeBps } =
+      await resolveOrDiscoverPool(client, {
+        poolAccount,
+        marketId,
+        tokenAddresses,
+        tokenAAddress,
+        tokenBAddress,
+        tokenASymbol: tokenA,
+        tokenBSymbol: tokenB,
+      });
+
+    // fetch token + LP metadata (with decimals, symbol, etc.)
+    const [infoA, infoB, lpInfo] = await Promise.all([
+      loadTokenDetails(client, tokenARef),
+      loadTokenDetails(client, tokenBRef),
+      loadTokenDetails(client, lpTokenRef),
+    ]);
+
+    // get reserves
+    const balances = await client.client.getAllBalances(poolRef);
+    const reserveMap = new Map();
+    for (const { token, balance } of balances) {
+      reserveMap.set(token.publicKeyString.get(), balance);
     }
-    if (tokenBAddress) {
-      normalizedOverrides[tokenB] = tokenBAddress.trim();
-    }
+    const reserveA = reserveMap.get(infoA.address) || 0n;
+    const reserveB = reserveMap.get(infoB.address) || 0n;
+    const lpSupply = await client.client.getTokenSupply(lpTokenRef);
 
-    const poolOverride =
-      typeof poolAccount === "string" && poolAccount.trim() ? poolAccount.trim() : undefined;
-    const lpTokenOverride =
-      typeof lpTokenAccount === "string" && lpTokenAccount.trim()
-        ? lpTokenAccount.trim()
-        : undefined;
+    // normalize inputs
+    const rawA = toRawAmount(String(amountA), infoA.decimals);
+    const rawB = toRawAmount(String(amountB), infoB.decimals);
 
-    const overrides = {};
-    if (poolOverride) {
-      overrides.poolAccount = poolOverride;
-    }
-    if (lpTokenOverride) {
-      overrides.lpTokenAccount = lpTokenOverride;
-    }
-    if (Object.keys(normalizedOverrides).length > 0) {
-      overrides.tokenAddresses = normalizedOverrides;
-    }
+    // simulate mint outcome
+    const { minted, share } = calculateLiquidityMint(rawA, rawB, reserveA, reserveB, lpSupply);
 
-    const offlineContext = await loadOfflinePoolContext(overrides);
-    const usingOfflineContext = Boolean(offlineContext);
-
-    if (!usingOfflineContext) {
-      client = await createClient({ seed, accountIndex });
-    }
-
-    const context = usingOfflineContext
-      ? offlineContext
-      : await loadPoolContext(client, overrides);
-
-    const findBySymbol = (symbol) =>
-      context.tokens.find((item) => item.symbol === symbol);
-    const findByAddress = (address) =>
-      context.tokens.find((item) => item.address === address);
-
-    const tokenDetailsA =
-      findBySymbol(tokenA) ||
-      (normalizedOverrides[tokenA] && findByAddress(normalizedOverrides[tokenA]));
-    const tokenDetailsB =
-      findBySymbol(tokenB) ||
-      (normalizedOverrides[tokenB] && findByAddress(normalizedOverrides[tokenB]));
-
-    if (!tokenDetailsA || !tokenDetailsB) {
-      throw new Error("Selected pool does not support the provided token pair");
-    }
-
-    const amountARaw = toRawAmount(amountA, tokenDetailsA.decimals);
-    const amountBRaw = toRawAmount(amountB, tokenDetailsB.decimals);
-
-    if (amountARaw <= 0n || amountBRaw <= 0n) {
-      throw new Error("Liquidity amounts must be greater than zero");
-    }
-
-    const reserveA = BigInt(tokenDetailsA.reserveRaw);
-    const reserveB = BigInt(tokenDetailsB.reserveRaw);
-    const totalSupply = BigInt(context.lpToken.supplyRaw || "0");
-
-    const { minted, share } = calculateLiquidityMint(
-      amountARaw,
-      amountBRaw,
-      reserveA,
-      reserveB,
-      totalSupply
-    );
-
-    if (minted <= 0n) {
-      throw new Error(
-        "Deposit is too small to mint LP tokens. Increase the amount and try again."
-      );
-    }
-
-    const optimalBRaw = reserveA === 0n ? amountBRaw : (amountARaw * reserveB) / (reserveA || 1n);
-    const optimalARaw = reserveB === 0n ? amountARaw : (amountBRaw * reserveA) / (reserveB || 1n);
-
-    const sharePercent = Number.isFinite(share)
-      ? Number((share * 100).toFixed(6))
-      : 0;
-
-    let execution = {};
-    if (EXECUTE_TRANSACTIONS) {
-      if (usingOfflineContext) {
-        execution = {
-          error: "Transaction execution is unavailable when using offline fixtures",
-        };
-      } else {
-        try {
-          execution = await executeAddLiquidity(client, context, {
-            amountARaw,
-            amountBRaw,
-            mintedRaw: minted,
-            tokenA: tokenDetailsA,
-            tokenB: tokenDetailsB,
-          });
-        } catch (execError) {
-          execution = { error: execError.message };
-        }
-      }
-    }
-
-    const response = {
-      pool: context.pool,
-      lpToken: context.lpToken,
-      deposits: {
-        tokenA: {
-          symbol: tokenDetailsA.symbol,
-          address: tokenDetailsA.address,
-          amountRaw: amountARaw.toString(),
-          amountFormatted: formatAmount(amountARaw, tokenDetailsA.decimals),
-        },
-        tokenB: {
-          symbol: tokenDetailsB.symbol,
-          address: tokenDetailsB.address,
-          amountRaw: amountBRaw.toString(),
-          amountFormatted: formatAmount(amountBRaw, tokenDetailsB.decimals),
-        },
+    const payload = {
+      message: "Add liquidity prepared (not broadcast).",
+      pool: {
+        address: poolRef.publicKeyString.get(),
+        feeBps,
       },
       minted: {
         raw: minted.toString(),
-        formatted: formatAmount(minted, context.lpToken.decimals),
-        share: sharePercent,
+        formatted: formatAmount(minted, lpInfo.decimals),
+        symbol: lpInfo.symbol,
+        share,
       },
-      optimalDepositRatio: {
-        forTokenA: optimalARaw.toString(),
-        forTokenB: optimalBRaw.toString(),
-      },
-      execution: {
-        attempted: EXECUTE_TRANSACTIONS,
-        ...execution,
-      },
-      instructions: {
-        deposits: [
-          {
-            to: context.pool.address,
-            token: tokenDetailsA.address,
-            amountRaw: amountARaw.toString(),
-          },
-          {
-            to: context.pool.address,
-            token: tokenDetailsB.address,
-            amountRaw: amountBRaw.toString(),
-          },
-        ],
-        lpMint: {
-          token: context.lpToken.address,
-          amountRaw: minted.toString(),
+      inputs: {
+        tokenA: {
+          symbol: infoA.symbol,
+          amountRaw: rawA.toString(),
+          amountFormatted: formatAmount(rawA, infoA.decimals),
+        },
+        tokenB: {
+          symbol: infoB.symbol,
+          amountRaw: rawB.toString(),
+          amountFormatted: formatAmount(rawB, infoB.decimals),
         },
       },
-      message: EXECUTE_TRANSACTIONS
-        ? "Liquidity provision prepared. Transaction broadcast attempted."
-        : "Liquidity provision prepared. Set KEETA_EXECUTE_TRANSACTIONS=1 to broadcast automatically.",
     };
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify(response),
-    };
+    return { statusCode: 200, body: JSON.stringify(payload, bigintReplacer) };
   } catch (error) {
     console.error("addLiquidity error", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message || "Add liquidity failed" }),
+      body: JSON.stringify({
+        error: error?.message || "Add liquidity failed",
+      }),
     };
-  } finally {
-    if (client && typeof client.destroy === "function") {
-      try {
-        await client.destroy();
-      } catch (destroyErr) {
-        console.warn("Failed to destroy Keeta client", destroyErr);
-      }
-    }
   }
-}
-
-export const handler = withCors(addLiquidityHandler);
+});

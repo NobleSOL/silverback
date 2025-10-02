@@ -1,12 +1,13 @@
-const { createHash } = require("node:crypto");
-const KeetaNet = require("@keetanetwork/keetanet-client");
-const { withCors } = require("./cors.js");
-const {
+// functions/wallet.js
+import { createHash } from "node:crypto";
+import * as KeetaNet from "@keetanetwork/keetanet-client";
+import { withCors } from "./cors.js";
+import {
   DEFAULT_NETWORK,
   decodeMetadata,
   formatAmount,
   loadOfflinePoolContext,
-} = require("./utils/keeta.js");
+} from "./utils/keeta.js";
 
 const HEX_SEED_REGEX = /^[0-9a-f]{64}$/i;
 
@@ -48,7 +49,12 @@ async function attemptWithTimeout(operation, options = {}) {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(`Timed out while waiting for ${label} after ${timeoutMs}ms`)),
+      () =>
+        reject(
+          new Error(
+            `Timed out while waiting for ${label} after ${timeoutMs}ms`
+          )
+        ),
       timeoutMs
     );
   });
@@ -128,7 +134,8 @@ async function loadIdentifier(client, account) {
       if (typeof value === "string") return value;
       if (typeof value === "object") {
         if (typeof value?.address === "string") return value.address;
-        if (typeof value?.publicKeyString === "string") return value.publicKeyString;
+        if (typeof value?.publicKeyString === "string")
+          return value.publicKeyString;
       }
     }
   } catch (infoError) {
@@ -161,7 +168,8 @@ function buildOfflineWalletResponse({
       : {};
 
   const decimalsValue = Number(baseTokenContext.decimals);
-  const decimals = Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
+  const decimals =
+    Number.isFinite(decimalsValue) && decimalsValue >= 0 ? decimalsValue : 0;
 
   return {
     seed: normalizedSeed,
@@ -200,7 +208,7 @@ async function walletHandler(event) {
     const payload = parseBody(event.body);
     accountIndex = parseAccountIndex(payload.accountIndex);
 
-    // ✅ If no seed provided, create a new wallet
+    // If no seed provided, generate a brand new wallet (dev / test workflow)
     if (!payload.seed) {
       const seed = KeetaNet.lib.Account.randomSeed();
       account = KeetaNet.lib.Account.fromSeed(seed, 0);
@@ -229,8 +237,8 @@ async function walletHandler(event) {
     normalizedSeed = derived.normalizedSeed;
     account = derived.account;
 
+    // If we have an offline fixture, use it (prevents network flakiness)
     offlineContext = await loadOfflinePoolContext();
-
     if (offlineContext) {
       const response = buildOfflineWalletResponse({
         normalizedSeed,
@@ -242,6 +250,7 @@ async function walletHandler(event) {
       return { statusCode: 200, body: JSON.stringify(response) };
     }
 
+    // Live network path
     client = KeetaNet.UserClient.fromNetwork(DEFAULT_NETWORK, account);
 
     const [identifierLookup, baseTokenLookup, balanceLookup] = await Promise.all([
@@ -284,7 +293,10 @@ async function walletHandler(event) {
         decimals: baseTokenDetails.decimals ?? 0,
         metadata: baseTokenDetails.metadata || {},
         balanceRaw: balanceRaw.toString(),
-        balanceFormatted: formatAmount(balanceRaw, baseTokenDetails.decimals ?? 0),
+        balanceFormatted: formatAmount(
+          balanceRaw,
+          baseTokenDetails.decimals ?? 0
+        ),
       },
     };
 
@@ -293,7 +305,9 @@ async function walletHandler(event) {
       if (!identifierLookup.ok) missing.push("identifier");
       if (!baseTokenLookup.ok) missing.push("base token metadata");
       if (!balanceLookup.ok) missing.push("base token balance");
-      response.message = `Wallet details returned with fallback values for ${missing.join(", ")}`;
+      response.message = `Wallet details returned with fallback values for ${missing.join(
+        ", "
+      )}`;
     }
 
     return { statusCode: 200, body: JSON.stringify(response) };
@@ -328,4 +342,4 @@ async function walletHandler(event) {
   }
 }
 
-exports.handler = withCors(walletHandler);
+export const handler = withCors(walletHandler);

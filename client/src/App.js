@@ -1,6 +1,7 @@
 /* global BigInt */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import { fetchTokenByAddress } from "./utils/api";
 import { lib as KeetaLib, UserClient as KeetaUserClient } from "@keetanetwork/keetanet-client";
 import LiquidityCard from "./components/LiquidityCard";
 import { applyBrandTheme } from "./theme";
@@ -351,12 +352,14 @@ const INITIAL_WALLET_STATE = {
 /**
  * ---------- TokenBadge + TokenSelect ----------
  */
-function TokenBadge({ symbol, logo }) {
+function TokenBadge({ symbol, logo, size }) {
   const initialSrc = useMemo(() => logo || getTokenLogoSource(symbol), [symbol, logo]);
   const [src, setSrc] = useState(initialSrc);
+
   useEffect(() => {
     setSrc(logo || getTokenLogoSource(symbol));
   }, [symbol, logo]);
+
   const handleError = () => {
     const upper = String(symbol || "").toUpperCase();
     if (upper === "KTA" && src !== KTA_LOGO_DATA_URL) {
@@ -367,12 +370,25 @@ function TokenBadge({ symbol, logo }) {
       setSrc(FALLBACK_TOKEN_ICON);
     }
   };
+
+  let imgStyle = { objectFit: 'contain' };
+  if (size === 'small') {
+    imgStyle.width = '24px';
+    imgStyle.height = '24px';
+  }
+
   return (
-    <img className="token-img" src={src} alt={symbol ? `${symbol} logo` : "Token logo"} onError={handleError} />
+    <img
+      className="token-img"
+      src={src}
+      alt={symbol ? `${symbol} logo` : "Token logo"}
+      onError={handleError}
+      style={imgStyle}
+    />
   );
 }
 
-function TokenSelect({ value, onChange, options }) {
+function TokenSelect({ value, onChange, options, onImportAddress }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -405,56 +421,684 @@ function TokenSelect({ value, onChange, options }) {
       closePopover();
       return;
     }
-    const next = options.find((option) => symbolsEqual(option.symbol, symbol)) || null;
+    const next =
+      options.find((option) => symbolsEqual(option.symbol, symbol)) || null;
     onChange(next);
     closePopover();
   };
 
+  // ✅ Detect a keeta contract address and attempt import
+  const maybeImportByAddress = () => {
+    const candidate = query.trim();
+    if (!candidate) return;
+    // simple contract address check
+    if (/^keeta_[a-z0-9]+$/i.test(candidate)) {
+      if (onImportAddress) {
+        onImportAddress(candidate);
+      }
+    }
+  };
+
   return (
-    <div className="token-select" data-open={open}>
+    <div className="token-select">
       <button
         type="button"
-        className="token-trigger"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
+        className="token-select__button"
+        onClick={() => setOpen(!open)}
       >
-        <span className="token-trigger-icon">
-          <TokenBadge symbol={selectedSymbol} logo={selectedLogo} />
-        </span>
-        <span className="token-trigger-symbol">{selectedSymbol || "Select"}</span>
+        {selectedLogo && <TokenBadge symbol={selectedSymbol} logo={selectedLogo} size="small" />}
+        <span>{selectedSymbol || "Select Token"}</span>
       </button>
+
       {open && (
-        <div className="token-popover" role="listbox">
+        <div className="token-select__popover">
           <input
             className="token-search"
-            placeholder="Search token"
+            placeholder="Search token or paste contract address"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                maybeImportByAddress();
+              }
+            }}
+            onBlur={maybeImportByAddress}
           />
-          <div className="token-list">
+          <ul>
             {filtered.map((option) => (
-              <button
+              <li
                 key={option.symbol}
-                type="button"
-                className={`token-item${
-                  symbolsEqual(option.symbol, selectedSymbol) ? " is-active" : ""
-                }`}
                 onClick={() => handleSelect(option.symbol)}
               >
-                <span className="token-icon">
-                  <TokenBadge symbol={option.symbol} logo={option.logo} />
-                </span>
-                <div className="token-info">
-                  <span className="token-symbol">{option.symbol}</span>
-                  <span className="token-name">{option.name}</span>
-                </div>
-              </button>
+                <TokenBadge symbol={option.symbol} logo={option.logo} size="small" />{" "}
+                {option.symbol} — {option.name}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
     </div>
+  );
+}
+
+/* ---------- SwapPage ---------- */
+function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
+  const {
+    data: poolData,
+    loading: poolLoading,
+    error: poolError,
+    refresh,
+    overrides: poolOverrides,
+  } = poolState;
+
+  const [importedTokens, setImportedTokens] = useState([]);
+
+  // Build token options (KTA, SBCK, pool tokens, imported)
+  const tokenOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+
+    const addOption = (token) => {
+      if (!token?.symbol || token?.requiresConfiguration) return;
+      const key = token.symbol.toUpperCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const enriched = withTokenLogo(token);
+      const config = getKnownTokenConfig(token.symbol);
+      options.push({
+        symbol: enriched.symbol,
+        name:
+          token.info?.name ||
+          token.metadata?.name ||
+          enriched.name ||
+          config?.name ||
+          enriched.symbol,
+        logo: enriched.logo || config?.logo,
+        address: enriched.address,
+        decimals: token.decimals,
+      });
+    };
+
+    addOption(TOKENS.KTA);
+    addOption(TOKENS.SBCK);
+
+    if (poolData?.baseToken) addOption(poolData.baseToken);
+    (poolData?.tokens || []).forEach(addOption);
+    importedTokens.forEach(addOption);
+
+    return options;
+  }, [poolData, importedTokens]);
+
+  const tokenMap = useMemo(() => {
+    const map = {};
+    const registerToken = (token) => {
+      if (!token?.symbol || token?.requiresConfiguration) return;
+      const enriched = withTokenLogo(token);
+      const entry = { ...enriched, decimals: token.decimals };
+      map[entry.symbol] = entry;
+      if (enriched.address) map[enriched.address] = entry;
+    };
+
+    (poolData?.tokens || []).forEach(registerToken);
+    importedTokens.forEach(registerToken);
+
+    if (poolData?.baseToken?.symbol) {
+      const key = poolData.baseToken.symbol;
+      if (!map[key]) {
+        const reserve = poolData?.reserves?.[key];
+        registerToken({
+          ...poolData.baseToken,
+          reserveRaw: reserve?.reserveRaw || poolData.baseToken.reserveRaw || "0",
+          reserveFormatted:
+            reserve?.reserveFormatted || poolData.baseToken.reserveFormatted || "0",
+        });
+      }
+    }
+
+    return map;
+  }, [poolData, importedTokens]);
+
+  // Handle user importing a token
+  const handleImportToken = async (address) => {
+    try {
+      const token = await fetchTokenByAddress(address);
+      if (token) {
+        setImportedTokens((prev) => {
+          if (prev.find((t) => t.address === token.address)) return prev;
+          return [...prev, token];
+        });
+      }
+    } catch (err) {
+      console.error("Failed to import token:", err);
+    }
+  };
+
+  // Wallet + balances
+  const walletBaseToken = wallet?.baseToken || null;
+  const walletLoading = Boolean(wallet?.loading);
+  const walletBaseTokenBalance = resolveBaseTokenBalance(walletBaseToken);
+
+  const [fromToken, setFromToken] = useState(TOKENS.KTA);
+  const [toToken, setToToken] = useState(TOKENS.SBCK);
+
+  const fromAsset = fromToken?.symbol || "";
+  const toAsset = toToken?.symbol || "";
+
+  useEffect(() => {
+    if (!tokenOptions.length) {
+      if (!symbolsEqual(fromAsset, TOKENS.KTA.symbol)) setFromToken(TOKENS.KTA);
+      if (toToken) setToToken(null);
+      return;
+    }
+
+    const findOption = (symbol) =>
+      tokenOptions.find((option) => symbolsEqual(option.symbol, symbol));
+
+    const prioritizedFrom = [fromAsset, TOKENS.KTA.symbol, tokenOptions[0]?.symbol];
+    let nextFrom = null;
+    for (const candidate of prioritizedFrom) {
+      if (!candidate) continue;
+      const match = findOption(candidate);
+      if (match) {
+        nextFrom = match;
+        break;
+      }
+    }
+    if (!nextFrom) nextFrom = tokenOptions[0];
+    if (!fromToken || fromToken !== nextFrom) {
+      if (
+        !fromToken ||
+        !symbolsEqual(fromToken.symbol, nextFrom.symbol) ||
+        fromToken.logo !== nextFrom.logo
+      ) {
+        setFromToken(nextFrom);
+      }
+    }
+
+    const prioritizedTo = [toAsset, TOKENS.SBCK?.symbol];
+    let nextTo = null;
+    for (const candidate of prioritizedTo) {
+      if (!candidate) continue;
+      const match = findOption(candidate);
+      if (match) {
+        nextTo = match;
+        break;
+      }
+    }
+    if (!nextTo || symbolsEqual(nextTo.symbol, nextFrom.symbol)) {
+      nextTo =
+        tokenOptions.find((option) => !symbolsEqual(option.symbol, nextFrom.symbol)) || null;
+    }
+
+    if (toToken !== nextTo) {
+      const shouldUpdate =
+        (!toToken && nextTo) ||
+        (toToken &&
+          (!nextTo ||
+            !symbolsEqual(toToken.symbol, nextTo.symbol) ||
+            toToken.logo !== nextTo.logo));
+      if (shouldUpdate) {
+        setToToken(nextTo);
+      }
+    }
+  }, [tokenOptions, fromAsset, toAsset, fromToken, toToken]);
+
+  const handleFromTokenChange = useCallback((option) => {
+    setFromToken(option || null);
+  }, []);
+
+  const handleToTokenChange = useCallback((option) => {
+    setToToken(option || null);
+  }, []);
+
+  const [fromAmount, setFromAmount] = useState("");
+  const [toAmount, setToAmount] = useState("");
+  const [status, setStatus] = useState("");
+  const [quoteDetails, setQuoteDetails] = useState(null);
+  const [slippageBps, setSlippageBps] = useState(50);
+  const [slippageOpen, setSlippageOpen] = useState(false);
+  const [activeSwapTab, setActiveSwapTab] = useState("swap");
+
+  const slippagePercentDisplay = useMemo(() => {
+    const value = Number(slippageBps);
+    if (!Number.isFinite(value) || value < 0) return "0%";
+    return `${(value / 100).toFixed(2)}%`;
+  }, [slippageBps]);
+
+  useEffect(() => {
+    if (!poolData) {
+      setToAmount("");
+      return;
+    }
+    const tokenIn = tokenMap[fromAsset];
+    const tokenOut = tokenMap[toAsset];
+    if (!tokenIn || !tokenOut) {
+      setToAmount("");
+      return;
+    }
+    try {
+      const amountInRaw = toRawAmount(fromAmount, tokenIn.decimals);
+      if (amountInRaw <= 0n) {
+        setToAmount("");
+        return;
+      }
+      const reserveIn = BigInt(tokenIn.reserveRaw);
+      const reserveOut = BigInt(tokenOut.reserveRaw);
+      const { amountOut } = calculateSwapQuote(amountInRaw, reserveIn, reserveOut, poolData.pool.feeBps);
+      if (amountOut <= 0n) {
+        setToAmount("");
+        setQuoteDetails(null);
+        return;
+      }
+      const expectedFormatted = formatAmount(amountOut, tokenOut.decimals);
+      const slippageMultiplier = BigInt(10_000 - slippageBps);
+      const minOutRaw = (amountOut * slippageMultiplier) / 10_000n;
+      const minimumFormatted = formatAmount(minOutRaw, tokenOut.decimals);
+      setToAmount(expectedFormatted);
+      setQuoteDetails({
+        tokens: {
+          from: { symbol: fromAsset },
+          to: {
+            symbol: toAsset,
+            expectedFormatted,
+            expectedRaw: amountOut.toString(),
+            minimumFormatted,
+          },
+        },
+        priceImpact: "—",
+      });
+    } catch {
+      setToAmount("");
+      setQuoteDetails(null);
+    }
+  }, [fromAmount, fromAsset, toAsset, poolData, tokenMap, slippageBps]);
+
+  const flipDirection = () => {
+    const previousFrom = fromToken;
+    const previousTo = toToken;
+    setFromToken(previousTo || previousFrom || null);
+    setToToken(previousFrom || previousTo || null);
+    setFromAmount(toAmount);
+    setToAmount(fromAmount);
+    setQuoteDetails(null);
+  };
+
+  const handleSwap = async () => {
+    if (!fromAmount) return setStatus("Enter an amount to swap");
+    if (!wallet?.seed) return setStatus("Connect a testnet wallet seed first");
+
+    const tokenIn = tokenMap[fromAsset];
+    const tokenOut = tokenMap[toAsset];
+    const poolAddress = poolData?.pool?.address;
+
+    if (!tokenIn || !tokenOut) return setStatus("Selected token pair not supported");
+    if (!poolAddress) return setStatus("Pool unavailable. Refresh and try again.");
+
+    const amountInRaw = toRawAmount(fromAmount, tokenIn.decimals);
+    if (amountInRaw <= 0n) return setStatus("Swap amount must be > 0");
+
+    setStatus("Preparing swap...");
+    setQuoteDetails(null);
+
+    try {
+      const tokenOverrides = poolOverrides?.tokenAddresses ? { ...poolOverrides.tokenAddresses } : undefined;
+      const poolOverrideAccount = (poolOverrides?.poolAccount || "").trim();
+
+      const requestPayload = {
+        seed: wallet.seed,
+        poolId: poolAddress,
+        poolAccount: poolOverrideAccount || poolAddress,
+        tokenIn: tokenIn.address,
+        tokenInSymbol: tokenIn.symbol,
+        tokenOut: tokenOut.address,
+        tokenOutSymbol: tokenOut.symbol,
+        amountIn: amountInRaw.toString(),
+        accountIndex: wallet.index || 0,
+      };
+      if (tokenOverrides && Object.keys(tokenOverrides).length > 0) {
+        requestPayload.tokenAddresses = tokenOverrides;
+      }
+
+      const response = await fetch("/.netlify/functions/swap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestPayload),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Swap failed");
+
+      setQuoteDetails({
+        tokens: {
+          from: { symbol: payload?.tokens?.from?.symbol, feePaidFormatted: payload?.tokens?.from?.feePaidFormatted },
+          to: {
+            symbol: payload?.tokens?.to?.symbol,
+            expectedFormatted: payload?.tokens?.to?.amountFormatted,
+            expectedRaw: payload?.tokens?.to?.expectedRaw,
+            minimumFormatted: (() => {
+              try {
+                const outRaw = BigInt(payload?.tokens?.to?.expectedRaw || "0");
+                if (outRaw <= 0n) return payload?.tokens?.to?.amountFormatted;
+                const slippageMultiplier = BigInt(10_000 - slippageBps);
+                const minOutRaw = (outRaw * slippageMultiplier) / 10_000n;
+                return formatAmount(minOutRaw, tokenOut.decimals);
+              } catch {
+                return payload?.tokens?.to?.amountFormatted;
+              }
+            })(),
+          },
+        },
+        priceImpact: payload?.priceImpact,
+      });
+      setStatus(payload?.message || "Swap prepared.");
+      refresh();
+    } catch (error) {
+      setStatus(`Swap failed: ${error.message}`);
+    }
+  };
+
+  const poolStatusMessage = poolError
+    ? `Failed to load pool: ${poolError}`
+    : poolLoading
+    ? "Fetching pool state..."
+    : "";
+
+  const heroStats = useMemo(() => {
+    if (!poolData?.tokens?.length) {
+      return [
+        { label: "Fee tier", value: "0 bps" },
+        { label: "LP supply", value: "—" },
+        { label: "Updated", value: "—" },
+      ];
+    }
+    const [tokenA, tokenB] = poolData.tokens;
+    return [
+      { label: "Fee tier", value: `${poolData.pool.feeBps} bps` },
+      { label: `${tokenA.symbol} reserve`, value: `${tokenA.reserveFormatted} ${tokenA.symbol}` },
+      { label: `${tokenB.symbol} reserve`, value: `${tokenB.reserveFormatted} ${tokenB.symbol}` },
+    ];
+  }, [poolData]);
+
+  const featuredPools = useMemo(() => {
+    if (!poolData?.tokens?.length) return [];
+    const [tokenA, tokenB] = poolData.tokens;
+    return [
+      {
+        id: poolData.pool.address,
+        tokenA: tokenA.symbol,
+        tokenB: tokenB.symbol,
+        fee: poolData.pool.feeBps,
+        reserves: `${tokenA.reserveFormatted} ${tokenA.symbol} / ${tokenB.reserveFormatted} ${tokenB.symbol}`,
+      },
+    ];
+  }, [poolData]);
+
+  return (
+    <main className="page" id="swap">
+      <section className="hero-section">
+        <div className="hero-grid">
+          <div className="hero-content">
+            <span className="eyebrow">Keeta Liquidity Layer</span>
+            <h1 className="hero-heading">Swap at apex speed with Silverback.</h1>
+            <p className="hero-subtitle">
+              Deep liquidity, MEV-aware routing, and a premium trading experience built for the Keeta ecosystem.
+            </p>
+            <div className="hero-actions">
+              <button type="button" className="primary-cta" onClick={() => onNavigate("swap", "/", "swap-panel")}>
+                Start swapping
+              </button>
+              <button type="button" className="ghost-cta" onClick={() => onNavigate("pools", "/pools", "pools")}>
+                View pools
+              </button>
+            </div>
+            <div className="metric-row" id="stats">
+              {heroStats.map((item) => (
+                <div className="metric-card" key={item.label}>
+                  <span className="metric-label">{item.label}</span>
+                  <span className="metric-value">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="hero-panel" id="swap-panel">
+            <WalletControls wallet={wallet} onWalletChange={onWalletChange} />
+
+            <div className="swap-card swap-card--panel">
+              <div className="swap-card__header">
+                <div className="swap-card__summary">
+                  <div className="swap-card__tabs" role="tablist" aria-label="Swap modes">
+                    {[{ key: "swap", label: "Swap" }, { key: "limit", label: "Limit", disabled: true }, { key: "liquidity", label: "Liquidity", disabled: true }].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeSwapTab === tab.key}
+                        className={`swap-card__tab${activeSwapTab === tab.key ? " is-active" : ""}`}
+                        onClick={() => {
+                          if (!tab.disabled) setActiveSwapTab(tab.key);
+                        }}
+                        disabled={Boolean(tab.disabled)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="swap-card__subtitle">Live Keeta pricing with one-tap execution.</div>
+                </div>
+                <div className="swap-card__popover">
+                  <button type="button" className="slippage-chip" onClick={() => setSlippageOpen((o) => !o)}>
+                    {slippagePercentDisplay}
+                  </button>
+                  {slippageOpen && (
+                    <div className="slippage-popover">
+                      <div className="slip-row">
+                        {[10, 50, 100].map((bps) => (
+                          <button
+                            key={bps}
+                            type="button"
+                            className={`slip-btn${slippageBps === bps ? " is-active" : ""}`}
+                            onClick={() => {
+                              setSlippageBps(bps);
+                              setSlippageOpen(false);
+                            }}
+                          >
+                            {(bps / 100).toFixed(2)}%
+                          </button>
+                        ))}
+                        <label className="slip-custom">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={slippageBps}
+                            inputMode="numeric"
+                            onChange={(e) => setSlippageBps(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                          />
+                          <span>bps</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="swap-card__body">
+                {/* From input */}
+                <div className="swap-input-block">
+                  <div className="swap-input-block__top">
+                    <span className="swap-input-block__label">You pay</span>
+                    <span className="swap-input-block__balance">
+                      {walletLoading
+                        ? "Balance: Loading..."
+                        : walletBaseToken &&
+                          symbolsEqual(fromAsset, walletBaseToken.symbol) &&
+                          walletBaseTokenBalance != null
+                        ? `Balance: ${walletBaseTokenBalance} ${walletBaseToken.symbol}`
+                        : "Balance: —"}
+                    </span>
+                  </div>
+                  <div className="swap-input">
+                    <input
+                      id="swap-from-amount"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={fromAmount}
+                      onChange={(e) => setFromAmount(e.target.value)}
+                    />
+                    <TokenSelect value={fromToken} onChange={handleFromTokenChange} options={tokenOptions} onImportAddress={handleImportToken} />
+                  </div>
+                </div>
+
+                <button type="button" className="swap-flip" aria-label="Switch direction" onClick={flipDirection}>
+                  <SwapIcon />
+                </button>
+
+                {/* To input */}
+                <div className="swap-input-block">
+                  <div className="swap-input-block__top">
+                    <span className="swap-input-block__label">You receive</span>
+                    <span className="swap-input-block__balance">
+                      {walletBaseToken && symbolsEqual(toAsset, walletBaseToken.symbol)
+                        ? walletLoading
+                          ? "Balance: Loading..."
+                          : walletBaseTokenBalance != null
+                          ? `Balance: ${walletBaseTokenBalance} ${walletBaseToken.symbol}`
+                          : "Balance: —"
+                        : ""}
+                    </span>
+                  </div>
+                  <div className="swap-input">
+                    <input
+                      id="swap-to-amount"
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={toAmount}
+                      onChange={(e) => setToAmount(e.target.value)}
+                    />
+                    <TokenSelect value={toToken} onChange={handleToTokenChange} options={tokenOptions} onImportAddress={handleImportToken} />
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div className="swap-summary">
+                  <div className="swap-summary__row">
+                    <span>Expected output</span>
+                    <span>
+                      {quoteDetails?.tokens?.to?.expectedFormatted || "—"} {quoteDetails?.tokens?.to?.symbol || toAsset}
+                    </span>
+                  </div>
+                  <div className="swap-summary__row">
+                    <span>Minimum received {slippagePercentDisplay ? `(${slippagePercentDisplay})` : ""}</span>
+                    <span>
+                      {quoteDetails?.tokens?.to?.minimumFormatted || "—"} {quoteDetails?.tokens?.to?.symbol || toAsset}
+                    </span>
+                  </div>
+                  <div className="swap-summary__row">
+                    <span>Fee</span>
+                    <span>
+                      {quoteDetails?.tokens?.from?.feePaidFormatted || `${(poolData?.pool?.feeBps ?? 0) / 100}%`}{" "}
+                      {quoteDetails?.tokens?.from?.symbol || fromAsset}
+                    </span>
+                  </div>
+                  <div className="swap-summary__row">
+                    <span>Price impact</span>
+                    <span>{quoteDetails ? `${quoteDetails.priceImpact} %` : "—"}</span>
+                  </div>
+                  <div className="swap-summary__row route-line">
+                    <span>Route</span>
+                    <span>{poolData?.pool?.address ? formatAddress(poolData.pool.address) : "—"}</span>
+                  </div>
+                </div>
+
+                {poolStatusMessage && <div className="swap-alert">{poolStatusMessage}</div>}
+
+                <button type="button" className="primary-cta full swap-submit" onClick={handleSwap}>
+                  Swap
+                </button>
+
+                {status && <p className="status swap-status">{status}</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="market-section">
+        <div className="section-header">
+          <div>
+            <span className="eyebrow">Featured markets</span>
+            <h2>Discover deep liquidity pairs</h2>
+            <p className="section-subtitle">
+              Deploy capital into the highest performing pools backed by Silverback routing.
+            </p>
+          </div>
+          <button type="button" className="ghost-cta" onClick={() => onNavigate("pools", "/pools", "pools")}>
+            Explore pools
+          </button>
+        </div>
+        <div className="pool-grid">
+          {featuredPools.length === 0 && (
+            <article className="pool-card" key="placeholder">
+              <div className="pool-card-head">
+                <div className="pool-token-icons">
+                  <span className="token-icon token-icon-lg">
+                    <TokenBadge symbol="KTA" />
+                  </span>
+                  <span className="token-icon token-icon-lg">
+                    <TokenBadge symbol="TEST" />
+                  </span>
+                </div>
+                <span className="pool-pair">KTA/TEST</span>
+              </div>
+              <div className="pool-card-body">
+                <div className="pool-metric">
+                  <span className="metric-label">Fee</span>
+                  <span className="metric-value">—</span>
+                </div>
+                <div className="pool-metric">
+                  <span className="metric-label">Reserves</span>
+                  <span className="metric-value">—</span>
+                </div>
+              </div>
+              <button type="button" className="pill-link" onClick={() => onNavigate("pools", "/pools", "pools")}>
+                Manage position <ArrowTopRight />
+              </button>
+            </article>
+          )}
+          {featuredPools.map((pool) => (
+            <article className="pool-card" key={pool.id}>
+              <div className="pool-card-head">
+                <div className="pool-token-icons">
+                  <span className="token-icon token-icon-lg">
+                    <TokenBadge symbol={pool.tokenA} />
+                  </span>
+                  <span className="token-icon token-icon-lg">
+                    <TokenBadge symbol={pool.tokenB} />
+                  </span>
+                </div>
+                <span className="pool-pair">{pool.tokenA}/{pool.tokenB}</span>
+              </div>
+              <div className="pool-card-body">
+                <div className="pool-metric">
+                  <span className="metric-label">Fee</span>
+                  <span className="metric-value">{pool.fee} bps</span>
+                </div>
+                <div className="pool-metric">
+                  <span className="metric-label">Reserves</span>
+                  <span className="metric-value">{pool.reserves}</span>
+                </div>
+              </div>
+              <button type="button" className="pill-link" onClick={() => onNavigate("pools", "/pools", "pools")}>
+                Manage position <ArrowTopRight />
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -960,645 +1604,6 @@ function Footer({ onNavigate }) {
         <span className="footer-copy">© {new Date().getFullYear()} Silverback Labs</span>
       </div>
     </footer>
-  );
-}
-
-/**
- * ---------- Swap page ----------
- */
-function SwapPage({ wallet, onWalletChange, onNavigate, poolState }) {
-  const {
-    data: poolData,
-    loading: poolLoading,
-    error: poolError,
-    refresh,
-    overrides: poolOverrides,
-  } = poolState;
-
-  const tokenOptions = useMemo(() => {
-    const seen = new Set();
-    const options = [];
-
-    const addOption = (token) => {
-      if (!token?.symbol || token?.requiresConfiguration) return;
-      const key = token.symbol.toUpperCase();
-      if (seen.has(key)) return;
-      seen.add(key);
-      const enriched = withTokenLogo(token);
-      const config = getKnownTokenConfig(token.symbol);
-      options.push({
-        symbol: enriched.symbol,
-        name:
-          token.info?.name ||
-          token.metadata?.name ||
-          enriched.name ||
-          config?.name ||
-          enriched.symbol,
-        logo: enriched.logo || config?.logo,
-      });
-    };
-
-    addOption(TOKENS.KTA);
-    addOption(TOKENS.SBCK);
-
-    if (poolData?.baseToken) addOption(poolData.baseToken);
-    (poolData?.tokens || []).forEach(addOption);
-    return options;
-  }, [poolData]);
-
-  const tokenMap = useMemo(() => {
-    const map = {};
-    const registerToken = (token) => {
-      if (!token?.symbol || token?.requiresConfiguration) return;
-      const enriched = withTokenLogo(token);
-      const entry = { ...enriched };
-      map[entry.symbol] = entry;
-      if (enriched.address) map[enriched.address] = entry;
-    };
-
-    (poolData?.tokens || []).forEach(registerToken);
-
-    if (poolData?.baseToken?.symbol) {
-      const key = poolData.baseToken.symbol;
-      if (!map[key]) {
-        const reserve = poolData?.reserves?.[key];
-        registerToken({
-          ...poolData.baseToken,
-          reserveRaw: reserve?.reserveRaw || poolData.baseToken.reserveRaw || "0",
-          reserveFormatted:
-            reserve?.reserveFormatted || poolData.baseToken.reserveFormatted || "0",
-        });
-      }
-    }
-
-    return map;
-  }, [poolData]);
-
-  const walletBaseToken = wallet?.baseToken || null;
-  const walletLoading = Boolean(wallet?.loading);
-  const walletBaseTokenBalance = resolveBaseTokenBalance(walletBaseToken);
-
-  const [fromToken, setFromToken] = useState(TOKENS.KTA);
-  const [toToken, setToToken] = useState(TOKENS.SBCK);
-
-  const fromAsset = fromToken?.symbol || "";
-  const toAsset = toToken?.symbol || "";
-
-  useEffect(() => {
-    if (!tokenOptions.length) {
-      if (!symbolsEqual(fromAsset, TOKENS.KTA.symbol)) setFromToken(TOKENS.KTA);
-      if (toToken) setToToken(null);
-      return;
-    }
-
-    const findOption = (symbol) =>
-      tokenOptions.find((option) => symbolsEqual(option.symbol, symbol));
-
-    const prioritizedFrom = [fromAsset, TOKENS.KTA.symbol, tokenOptions[0]?.symbol];
-    let nextFrom = null;
-    for (const candidate of prioritizedFrom) {
-      if (!candidate) continue;
-      const match = findOption(candidate);
-      if (match) {
-        nextFrom = match;
-        break;
-      }
-    }
-    if (!nextFrom) nextFrom = tokenOptions[0];
-    if (!fromToken || fromToken !== nextFrom) {
-      if (
-        !fromToken ||
-        !symbolsEqual(fromToken.symbol, nextFrom.symbol) ||
-        fromToken.logo !== nextFrom.logo
-      ) {
-        setFromToken(nextFrom);
-      }
-    }
-
-    const prioritizedTo = [toAsset, TOKENS.SBCK?.symbol];
-    let nextTo = null;
-    for (const candidate of prioritizedTo) {
-      if (!candidate) continue;
-      const match = findOption(candidate);
-      if (match) {
-        nextTo = match;
-        break;
-      }
-    }
-    if (!nextTo || symbolsEqual(nextTo.symbol, nextFrom.symbol)) {
-      nextTo =
-        tokenOptions.find((option) => !symbolsEqual(option.symbol, nextFrom.symbol)) || null;
-    }
-
-    if (toToken !== nextTo) {
-      const shouldUpdate =
-        (!toToken && nextTo) ||
-        (toToken &&
-          (!nextTo ||
-            !symbolsEqual(toToken.symbol, nextTo.symbol) ||
-            toToken.logo !== nextTo.logo));
-      if (shouldUpdate) {
-        setToToken(nextTo);
-      }
-    }
-  }, [tokenOptions, fromAsset, toAsset, fromToken, toToken]);
-
-  const handleFromTokenChange = useCallback((option) => {
-    setFromToken(option || null);
-  }, []);
-
-  const handleToTokenChange = useCallback((option) => {
-    setToToken(option || null);
-  }, []);
-
-  const [fromAmount, setFromAmount] = useState("");
-  const [toAmount, setToAmount] = useState("");
-  const [status, setStatus] = useState("");
-  const [quoteDetails, setQuoteDetails] = useState(null);
-  const [slippageBps, setSlippageBps] = useState(50);
-  const [slippageOpen, setSlippageOpen] = useState(false);
-  const [activeSwapTab, setActiveSwapTab] = useState("swap");
-  const slippagePercentDisplay = useMemo(() => {
-    const value = Number(slippageBps);
-    if (!Number.isFinite(value) || value < 0) return "0%";
-    return `${(value / 100).toFixed(2)}%`;
-  }, [slippageBps]);
-
-  useEffect(() => {
-    if (!poolData) {
-      setToAmount("");
-      return;
-    }
-    const tokenIn = tokenMap[fromAsset];
-    const tokenOut = tokenMap[toAsset];
-    if (!tokenIn || !tokenOut) {
-      setToAmount("");
-      return;
-    }
-    try {
-      const amountInRaw = toRawAmount(fromAmount, tokenIn.decimals);
-      if (amountInRaw <= 0n) {
-        setToAmount("");
-        return;
-      }
-      const reserveIn = BigInt(tokenIn.reserveRaw);
-      const reserveOut = BigInt(tokenOut.reserveRaw);
-      const { amountOut } = calculateSwapQuote(
-        amountInRaw,
-        reserveIn,
-        reserveOut,
-        poolData.pool.feeBps
-      );
-      if (amountOut <= 0n) {
-        setToAmount("");
-        setQuoteDetails(null);
-        return;
-      }
-
-      const expectedFormatted = formatAmount(amountOut, tokenOut.decimals);
-
-      // live slippage calc
-      const slippageMultiplier = BigInt(10_000 - slippageBps);
-      const minOutRaw = (amountOut * slippageMultiplier) / 10_000n;
-      const minimumFormatted = formatAmount(minOutRaw, tokenOut.decimals);
-
-      setToAmount(expectedFormatted);
-      setQuoteDetails({
-        tokens: {
-          from: { symbol: fromAsset },
-          to: {
-            symbol: toAsset,
-            expectedFormatted,
-            expectedRaw: amountOut.toString(),
-            minimumFormatted,
-          },
-        },
-        priceImpact: "—", // placeholder until swap response
-      });
-    } catch {
-      setToAmount("");
-      setQuoteDetails(null);
-    }
-  }, [fromAmount, fromAsset, toAsset, poolData, tokenMap, slippageBps]);
-
-  const flipDirection = () => {
-    const previousFrom = fromToken;
-    const previousTo = toToken;
-    setFromToken(previousTo || previousFrom || null);
-    setToToken(previousFrom || previousTo || null);
-    setFromAmount(toAmount);
-    setToAmount(fromAmount);
-    setQuoteDetails(null);
-  };
-
-  const handleSwap = async () => {
-    if (!fromAmount) {
-      setStatus("Enter an amount to swap");
-      return;
-    }
-    if (!wallet?.seed) {
-      setStatus("Connect a testnet wallet seed first");
-      return;
-    }
-
-    const tokenIn = tokenMap[fromAsset];
-    const tokenOut = tokenMap[toAsset];
-    const poolAddress = poolData?.pool?.address;
-
-    if (!tokenIn || !tokenOut) {
-      setStatus("Selected token pair is not supported");
-      return;
-    }
-
-    if (!poolAddress) {
-      setStatus("Pool is unavailable. Refresh and try again.");
-      return;
-    }
-
-    const amountInRaw = toRawAmount(fromAmount, tokenIn.decimals);
-    if (amountInRaw <= 0n) {
-      setStatus("Swap amount must be greater than zero");
-      return;
-    }
-
-    setStatus("Preparing swap...");
-    setQuoteDetails(null);
-
-    try {
-      const tokenOverrides = poolOverrides?.tokenAddresses
-        ? { ...poolOverrides.tokenAddresses }
-        : undefined;
-      const poolOverrideAccount = (poolOverrides?.poolAccount || "").trim();
-
-      const requestPayload = {
-        seed: wallet.seed,
-        poolId: poolAddress,
-        poolAccount: poolOverrideAccount || poolAddress,
-        tokenIn: tokenIn.address,
-        tokenInSymbol: tokenIn.symbol,
-        tokenOut: tokenOut.address,
-        tokenOutSymbol: tokenOut.symbol,
-        amountIn: amountInRaw.toString(),
-        accountIndex: wallet.index || 0,
-      };
-      if (tokenOverrides && Object.keys(tokenOverrides).length > 0) {
-        requestPayload.tokenAddresses = tokenOverrides;
-      }
-
-      const response = await fetch("/.netlify/functions/swap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Swap failed");
-      }
-
-      setQuoteDetails({
-        tokens: {
-          from: {
-            symbol: payload?.tokens?.from?.symbol,
-            feePaidFormatted: payload?.tokens?.from?.feePaidFormatted,
-          },
-          to: {
-            symbol: payload?.tokens?.to?.symbol,
-            expectedFormatted: payload?.tokens?.to?.amountFormatted,
-            expectedRaw: payload?.tokens?.to?.expectedRaw,
-            minimumFormatted: (() => {
-              try {
-                const outRaw = BigInt(payload?.tokens?.to?.expectedRaw || "0");
-                if (outRaw <= 0n) return payload?.tokens?.to?.amountFormatted;
-                const slippageMultiplier = BigInt(10_000 - slippageBps);
-                const minOutRaw = (outRaw * slippageMultiplier) / 10_000n;
-                return formatAmount(minOutRaw, tokenOut.decimals);
-              } catch {
-                return payload?.tokens?.to?.amountFormatted;
-              }
-            })(),
-          },
-        },
-        priceImpact: payload?.priceImpact,
-      });
-
-      setStatus(payload?.message || "Swap prepared.");
-      refresh();
-    } catch (error) {
-      setStatus(`Swap failed: ${error.message}`);
-    }
-  };
-
-  const poolStatusMessage = poolError
-    ? `Failed to load pool: ${poolError}`
-    : poolLoading
-    ? "Fetching pool state..."
-    : "";
-
-  const heroStats = useMemo(() => {
-    if (!poolData?.tokens?.length) {
-      return [
-        { label: "Fee tier", value: "0 bps" },
-        { label: "LP supply", value: "—" },
-        { label: "Updated", value: "—" },
-      ];
-    }
-    const [tokenA, tokenB] = poolData.tokens;
-    return [
-        { label: "Fee tier", value: `${poolData.pool.feeBps} bps` },
-        { label: `${tokenA.symbol} reserve`, value: `${tokenA.reserveFormatted} ${tokenA.symbol}` },
-        { label: `${tokenB.symbol} reserve`, value: `${tokenB.reserveFormatted} ${tokenB.symbol}` },
-    ];
-  }, [poolData]);
-
-  const featuredPools = useMemo(() => {
-    if (!poolData?.tokens?.length) return [];
-    const [tokenA, tokenB] = poolData.tokens;
-    return [
-      {
-        id: poolData.pool.address,
-        tokenA: tokenA.symbol,
-        tokenB: tokenB.symbol,
-        fee: poolData.pool.feeBps,
-        reserves: `${tokenA.reserveFormatted} ${tokenA.symbol} / ${tokenB.reserveFormatted} ${tokenB.symbol}`,
-      },
-    ];
-  }, [poolData]);
-
-  return (
-    <main className="page" id="swap">
-      <section className="hero-section">
-        <div className="hero-grid">
-          <div className="hero-content">
-            <span className="eyebrow">Keeta Liquidity Layer</span>
-            <h1 className="hero-heading">Swap at apex speed with Silverback.</h1>
-            <p className="hero-subtitle">
-              Deep liquidity, MEV-aware routing, and a premium trading experience built for the Keeta ecosystem.
-            </p>
-            <div className="hero-actions">
-              <button type="button" className="primary-cta" onClick={() => onNavigate("swap", "/", "swap-panel")}>
-                Start swapping
-              </button>
-              <button type="button" className="ghost-cta" onClick={() => onNavigate("pools", "/pools", "pools")}>
-                View pools
-              </button>
-            </div>
-            <div className="metric-row" id="stats">
-              {heroStats.map((item) => (
-                <div className="metric-card" key={item.label}>
-                  <span className="metric-label">{item.label}</span>
-                  <span className="metric-value">{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="hero-panel" id="swap-panel">
-            <WalletControls wallet={wallet} onWalletChange={onWalletChange} />
-            <div className="swap-card swap-card--panel">
-              <div className="swap-card__header">
-                <div className="swap-card__summary">
-                  <div className="swap-card__tabs" role="tablist" aria-label="Swap modes">
-                    {[
-                      { key: "swap", label: "Swap" },
-                      { key: "limit", label: "Limit", disabled: true },
-                      { key: "liquidity", label: "Liquidity", disabled: true },
-                    ].map((tab) => (
-                      <button
-                        key={tab.key}
-                        type="button"
-                        role="tab"
-                        aria-selected={activeSwapTab === tab.key}
-                        className={`swap-card__tab${activeSwapTab === tab.key ? " is-active" : ""}`}
-                        onClick={() => {
-                          if (!tab.disabled) setActiveSwapTab(tab.key);
-                        }}
-                        disabled={Boolean(tab.disabled)}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="swap-card__subtitle">Live Keeta pricing with one-tap execution.</div>
-                </div>
-
-                <div className="swap-card__popover">
-                  <button
-                    type="button"
-                    className="slippage-chip"
-                    aria-haspopup="dialog"
-                    aria-expanded={slippageOpen}
-                    onClick={() => setSlippageOpen((open) => !open)}
-                  >
-                    {slippagePercentDisplay}
-                  </button>
-                  {slippageOpen && (
-                    <div className="slippage-popover" role="dialog" aria-label="Slippage settings">
-                      <div className="slip-row">
-                        {[10, 50, 100].map((bps) => (
-                          <button
-                            type="button"
-                            key={bps}
-                            className={`slip-btn${slippageBps === bps ? " is-active" : ""}`}
-                            onClick={() => {
-                              setSlippageBps(bps);
-                              setSlippageOpen(false);
-                            }}
-                          >
-                            {(bps / 100).toFixed(2)}%
-                          </button>
-                        ))}
-                        <label className="slip-custom">
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            value={slippageBps}
-                            inputMode="numeric"
-                            onChange={(event) =>
-                              setSlippageBps(Math.max(0, Math.floor(Number(event.target.value) || 0)))
-                            }
-                          />
-                          <span>bps</span>
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="swap-card__body">
-                <div className="swap-input-block">
-                  <div className="swap-input-block__top">
-                    <span className="swap-input-block__label">You pay</span>
-                    <span className="swap-input-block__balance">
-                      {walletLoading
-                        ? "Balance: Loading..."
-                        : walletBaseToken &&
-                          symbolsEqual(fromAsset, walletBaseToken.symbol) &&
-                          walletBaseTokenBalance != null
-                        ? `Balance: ${walletBaseTokenBalance} ${walletBaseToken.symbol}`
-                        : "Balance: —"}
-                    </span>
-                  </div>
-                  <div className="swap-input">
-                    <input
-                      id="swap-from-amount"
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={fromAmount}
-                      onChange={(event) => setFromAmount(event.target.value)}
-                    />
-                    <TokenSelect value={fromToken} onChange={handleFromTokenChange} options={tokenOptions} />
-                  </div>
-                  <div className="swap-input__caption">Pool price updates automatically</div>
-                </div>
-
-                <button type="button" className="swap-flip" aria-label="Switch direction" onClick={flipDirection}>
-                  <SwapIcon />
-                </button>
-
-                <div className="swap-input-block">
-                  <div className="swap-input-block__top">
-                    <span className="swap-input-block__label">You receive</span>
-                    <span className="swap-input-block__balance">
-                      {walletBaseToken && symbolsEqual(toAsset, walletBaseToken.symbol)
-                        ? walletLoading
-                          ? "Balance: Loading..."
-                          : walletBaseTokenBalance != null
-                          ? `Balance: ${walletBaseTokenBalance} ${walletBaseToken.symbol}`
-                          : "Balance: —"
-                        : ""}
-                    </span>
-                  </div>
-                  <div className="swap-input">
-                    <input
-                      id="swap-to-amount"
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      value={toAmount}
-                      onChange={(event) => setToAmount(event.target.value)}
-                    />
-                    <TokenSelect value={toToken} onChange={handleToTokenChange} options={tokenOptions} />
-                  </div>
-                </div>
-
-                <div className="swap-summary">
-                  <div className="swap-summary__row">
-                    <span>Expected output</span>
-                    <span>
-                      {quoteDetails?.tokens?.to?.expectedFormatted || "—"}{" "}
-                      {quoteDetails?.tokens?.to?.symbol || toAsset}
-                    </span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>Minimum received {slippagePercentDisplay ? `(${slippagePercentDisplay})` : ""}</span>
-                    <span>
-                      {quoteDetails?.tokens?.to?.minimumFormatted || "—"}{" "}
-                      {quoteDetails?.tokens?.to?.symbol || toAsset}
-                    </span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>Fee</span>
-                    <span>
-                      {quoteDetails?.tokens?.from?.feePaidFormatted ||
-                        `${(poolData?.pool?.feeBps ?? 0) / 100}%`}{" "}
-                      {quoteDetails?.tokens?.from?.symbol || fromAsset}
-                    </span>
-                  </div>
-                  <div className="swap-summary__row">
-                    <span>Price impact</span>
-                    <span>{quoteDetails ? `${quoteDetails.priceImpact} %` : "—"}</span>
-                  </div>
-                  <div className="swap-summary__row route-line">
-                    <span>Route</span>
-                    <span>{poolData?.pool?.address ? formatAddress(poolData.pool.address) : "—"}</span>
-                  </div>
-                </div>
-
-                {poolStatusMessage && <div className="swap-alert">{poolStatusMessage}</div>}
-                <button type="button" className="primary-cta full swap-submit" onClick={handleSwap}>Swap</button>
-                {status && <p className="status swap-status">{status}</p>}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="market-section">
-        <div className="section-header">
-          <div>
-            <span className="eyebrow">Featured markets</span>
-            <h2>Discover deep liquidity pairs</h2>
-            <p className="section-subtitle">
-              Deploy capital into the highest performing pools backed by Silverback routing.
-            </p>
-          </div>
-          <button type="button" className="ghost-cta" onClick={() => onNavigate("pools", "/pools", "pools")}>
-            Explore pools
-          </button>
-        </div>
-        <div className="pool-grid">
-          {featuredPools.length === 0 && (
-            <article className="pool-card" key="placeholder">
-              <div className="pool-card-head">
-                <div className="pool-token-icons">
-                  <span className="token-icon token-icon-lg">
-                    <TokenBadge symbol="KTA" />
-                  </span>
-                  <span className="token-icon token-icon-lg">
-                    <TokenBadge symbol="TEST" />
-                  </span>
-                </div>
-                <span className="pool-pair">KTA/TEST</span>
-              </div>
-              <div className="pool-card-body">
-                <div className="pool-metric">
-                  <span className="metric-label">Fee</span>
-                  <span className="metric-value">—</span>
-                </div>
-                <div className="pool-metric">
-                  <span className="metric-label">Reserves</span>
-                  <span className="metric-value">—</span>
-                </div>
-              </div>
-              <button type="button" className="pill-link" onClick={() => onNavigate("pools", "/pools", "pools")}>
-                Manage position <ArrowTopRight />
-              </button>
-            </article>
-          )}
-          {featuredPools.map((pool) => (
-            <article className="pool-card" key={pool.id}>
-              <div className="pool-card-head">
-                <div className="pool-token-icons">
-                  <span className="token-icon token-icon-lg">
-                    <TokenBadge symbol={pool.tokenA} />
-                  </span>
-                  <span className="token-icon token-icon-lg">
-                    <TokenBadge symbol={pool.tokenB} />
-                  </span>
-                </div>
-                <span className="pool-pair">{pool.tokenA}/{pool.tokenB}</span>
-              </div>
-              <div className="pool-card-body">
-                <div className="pool-metric">
-                  <span className="metric-label">Fee</span>
-                  <span className="metric-value">{pool.fee} bps</span>
-                </div>
-                <div className="pool-metric">
-                  <span className="metric-label">Reserves</span>
-                  <span className="metric-value">{pool.reserves}</span>
-                </div>
-              </div>
-              <button type="button" className="pill-link" onClick={() => onNavigate("pools", "/pools", "pools")}>
-                Manage position <ArrowTopRight />
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
   );
 }
 
@@ -2188,7 +2193,8 @@ function PoolsPage({ wallet, onWalletChange, poolState }) {
  */
 function App() {
   const [view, setView] = useState(() =>
-    typeof window !== "undefined" && window.location.pathname.toLowerCase().includes("pools")
+    typeof window !== "undefined" &&
+    window.location.pathname.toLowerCase().includes("pools")
       ? "pools"
       : "swap"
   );
@@ -2199,19 +2205,16 @@ function App() {
     index: 0,
     address: "",
     account: null,
-    baseToken: {
-      symbol: "KTA",
-      balanceRaw: "0",
-      balanceFormatted: "0",
-    },
   };
 
   const [wallet, setWallet] = useState(() => ({ ...INITIAL_SIMPLE_WALLET_STATE }));
   const poolState = usePoolState();
+
   const walletSeed = wallet.seed;
   const walletIndex = wallet.index;
   const walletAddress = wallet.address;
   const walletAccount = wallet.account;
+
   const walletAccountKey = (() => {
     try {
       return walletAccount?.publicKeyString?.get?.() || null;
@@ -2223,16 +2226,22 @@ function App() {
   const scrollToSection = useCallback((id) => {
     if (typeof window === "undefined") return;
     const element = document.getElementById(id);
-    if (element) element.scrollIntoView({ behavior: "smooth" });
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
   }, []);
 
   useEffect(() => {
-    applyBrandTheme(BRAND_LOGO).catch(() => {});
+    applyBrandTheme(BRAND_LOGO).catch(() => {
+      /* ignore theme errors */
+    });
   }, []);
 
   useEffect(() => {
     const handlePop = () => {
-      const next = window.location.pathname.toLowerCase().includes("pools") ? "pools" : "swap";
+      const next = window.location.pathname.toLowerCase().includes("pools")
+        ? "pools"
+        : "swap";
       setView(next);
     };
     window.addEventListener("popstate", handlePop);
@@ -2264,7 +2273,6 @@ function App() {
     scrollToSection("wallet-panel");
   }, [scrollToSection]);
 
-  // Lightweight balance loader (for the header & balances list)
   useEffect(() => {
     let cancelled = false;
     const loadBalances = async () => {
@@ -2286,11 +2294,13 @@ function App() {
         });
         return;
       }
+
       setWallet((prev) => ({
         ...prev,
         balanceLoading: true,
         balanceError: "",
       }));
+
       let client;
       try {
         let account = walletAccount;
@@ -2298,13 +2308,20 @@ function App() {
           account = KeetaLib.Account.fromSeed(walletSeed, walletIndex || 0);
         }
         client = await createKeetaClient(account);
+
         let accountInfo;
         try {
-          accountInfo = await client.client.getAccountInfo(account.publicKeyString.get());
+          accountInfo = await client.client.getAccountInfo(
+            account.publicKeyString.get()
+          );
         } catch {
           accountInfo = await client.client.getAccountInfo(account);
         }
-        const balances = Array.isArray(accountInfo?.balances) ? accountInfo.balances : [];
+
+        const balances = Array.isArray(accountInfo?.balances)
+          ? accountInfo.balances
+          : [];
+
         const normalized = balances.map((entry, index) => {
           const raw = entry?.balance ?? entry?.amount ?? entry?.raw ?? 0;
           const { address, label } = resolveBalanceMetadata(entry, index);
@@ -2317,6 +2334,7 @@ function App() {
             formatted: formatKeetaBalance(raw),
           };
         });
+
         if (!cancelled) {
           setWallet((prev) => ({
             ...prev,
@@ -2340,7 +2358,6 @@ function App() {
           try {
             await client.destroy();
           } catch (destroyError) {
-            // eslint-disable-next-line no-console
             console.warn("Failed to destroy wallet client", destroyError);
           }
         }
@@ -2356,11 +2373,25 @@ function App() {
   return (
     <div className="app">
       <div className="site-shell">
-        <Header view={view} onNavigate={handleNavigate} wallet={wallet} onConnectClick={handleConnectClick} />
+        <Header
+          view={view}
+          onNavigate={handleNavigate}
+          wallet={wallet}
+          onConnectClick={handleConnectClick}
+        />
         {view === "pools" ? (
-          <PoolsPage wallet={wallet} onWalletChange={handleWalletChange} poolState={poolState} />
+          <PoolsPage
+            wallet={wallet}
+            onWalletChange={handleWalletChange}
+            poolState={poolState}
+          />
         ) : (
-          <SwapPage wallet={wallet} onWalletChange={handleWalletChange} onNavigate={handleNavigate} poolState={poolState} />
+          <SwapPage
+            wallet={wallet}
+            onWalletChange={handleWalletChange}
+            onNavigate={handleNavigate}
+            poolState={poolState}
+          />
         )}
         <Footer onNavigate={handleNavigate} />
       </div>
