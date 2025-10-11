@@ -1,23 +1,17 @@
-# Raydium Frontend
+# 🦍 Silverback DEX
 
-# url(query) support
+**Silverback DEX** is a Solana-based decentralized exchange being built to provide seamless swaps, liquidity management, and a future cross-chain router that collects protocol-owned fees.
 
-## Swap
+## 🚀 Tech Stack
+- [Next.js](https://nextjs.org/) + [TypeScript](https://www.typescriptlang.org/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [@solana/web3.js](https://solana-labs.github.io/solana-web3.js/)
+- [Jupiter API](https://station.jup.ag/docs) *(temporary quote routing)*
+- Planned: **Silverback Router & Fee Engine (Anchor)**
 
-- ammid
-- inputCurrency (v1:from)
-- outputCurrency (v1:to)
-- inputAmount
-- outputAmount
-
-## Liquidity
-
-- ammid
-- coin0
-- coin1
-- amount0
-- amount1
-
-## Farm
-
-- farmid
+## 🛠 Local Setup
+```bash
+git clone https://github.com/<your-username>/<your-repo>.git
+cd silverback-dex
+npm install --legacy-peer-deps
+npm run dev
