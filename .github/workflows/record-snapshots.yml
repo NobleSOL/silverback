@@ -1,0 +1,31 @@
+name: Record Pool Snapshots
+
+on:
+  schedule:
+    # Run every 6 hours at :05 minutes past the hour
+    - cron: '5 */6 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  record-snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record pool snapshots
+        run: |
+          echo "Recording pool snapshots..."
+          RESPONSE=$(curl -s -X POST https://dexkeeta.onrender.com/api/admin/record-snapshots \
+            -H "Content-Type: application/json" \
+            -w "\n%{http_code}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Response: $BODY"
+          echo "HTTP Status: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Error: Snapshot recording failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Snapshots recorded successfully"

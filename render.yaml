@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: keeta-dex-backend
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPS_SEED
+        sync: false
+      - key: TREASURY_SEED
+        sync: false
+      - key: PORT
+        value: 10000

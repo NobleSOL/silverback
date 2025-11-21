@@ -1,0 +1,64 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.config/
+
+# Environment variables (contains sensitive seeds/keys)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Keeta persistent storage (positions and transactions only - pools now tracked in git)
+keeta/.pools.json.backup
+keeta/.liquidity-positions-*.json
+keeta/.transactions.json
+
+# Test scripts and temporary files
+keeta/*.mjs
+test-*.mjs
+test-*.cjs
+diagnose-*.mjs
+check-*.mjs
+debug-*.mjs
+delete-*.mjs
+fix-*.mjs
+find-*.mjs
+list-*.mjs
+mint-*.mjs
+recover-*.mjs
+investigate-*.mjs
+cleanup-*.mjs
+migrate-*.mjs
+verify-*.mjs
+
+# SEND_ON_BEHALF permission testing scripts
+test-send-on-behalf-permissions.mjs
+test-send-on-behalf-simple.mjs
+test-burner-can-swap.mjs
+test-real-swap-creator-pool.mjs
+
+# Test scripts folder (temporary/debugging scripts)
+/tests/
