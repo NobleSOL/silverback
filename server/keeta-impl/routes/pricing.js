@@ -48,17 +48,28 @@ router.get('/tokens', async (req, res) => {
   }
 });
 
+// Cache KTA price to reduce API calls and improve reliability
+let cachedKTAPrice = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION_MS = 60000; // 1 minute cache
+
 /**
  * Fetch KTA price from CoinGecko API
- * Falls back to default price if API fails
+ * Falls back to cached or default price if API fails
  */
 async function fetchKTAPrice() {
+  // Return cached price if still valid
+  const now = Date.now();
+  if (cachedKTAPrice && (now - cacheTimestamp < CACHE_DURATION_MS)) {
+    return cachedKTAPrice;
+  }
+
   try {
     const response = await fetch(
       'https://api.coingecko.com/api/v3/simple/price?ids=keeta&vs_currencies=usd',
       {
         headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5000), // 5 second timeout
+        signal: AbortSignal.timeout(10000), // Increased to 10 second timeout
       }
     );
 
@@ -66,14 +77,25 @@ async function fetchKTAPrice() {
       const data = await response.json();
       const price = data?.keeta?.usd;
       if (typeof price === 'number' && price > 0) {
+        // Update cache
+        cachedKTAPrice = price;
+        cacheTimestamp = now;
+        console.log(`✅ Fetched KTA price from CoinGecko: $${price}`);
         return price;
       }
     }
   } catch (error) {
-    console.warn('Failed to fetch KTA price from CoinGecko:', error.message);
+    console.warn('⚠️ Failed to fetch KTA price from CoinGecko:', error.message);
   }
 
-  // Fallback to default price
+  // If we have a cached price (even if expired), use it instead of fallback
+  if (cachedKTAPrice) {
+    console.log(`ℹ️ Using cached KTA price: $${cachedKTAPrice}`);
+    return cachedKTAPrice;
+  }
+
+  // Last resort fallback
+  console.warn('⚠️ Using fallback KTA price: $0.15');
   return 0.15;
 }
 
