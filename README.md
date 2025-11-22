@@ -56,4 +56,4 @@ MIT
 
 ---
 
-Built with ❤️ by the Silverback team
+SILVERBACK.
