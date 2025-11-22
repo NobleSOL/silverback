@@ -550,7 +550,7 @@ export default function KeetaIndex() {
           {/* Sidebar - Trending (Right, 40% width) - Always show, like Base */}
           <aside className="order-2 md:order-2 md:col-span-2 space-y-6">
             {/* Trending on Keeta */}
-            <div className="rounded-2xl border border-border/60 bg-card/40 p-5 backdrop-blur">
+            <div className="glass-card rounded-2xl p-5">
               <TrendingPills symbols={["KTA", "BACK", "KBTC"]} title="Trending on Keeta" />
             </div>
           </aside>
