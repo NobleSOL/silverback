@@ -178,32 +178,79 @@ export function BridgeFromBase({ keetaAddress, onBridgeComplete }: BridgeFromBas
 
   const tokenConfig = ANCHOR_CONFIG.supportedTokens[selectedToken];
 
-  if (!isConnected) {
+  // Show connection requirements
+  if (!isConnected || !keetaAddress) {
     return (
-      <Card className="bridge-card">
+      <Card className="bridge-card glass-card-elevated">
         <CardHeader>
           <CardTitle>Bridge from Base to Keeta</CardTitle>
-          <CardDescription>Connect your wallet to start bridging</CardDescription>
+          <CardDescription>Connect both wallets to start bridging</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            Please connect your Base wallet to continue
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+          <div className="space-y-4">
+            {/* Base Wallet Status */}
+            <div className={`rounded-lg border p-4 ${isConnected ? 'border-green-500/30 bg-green-500/5' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`rounded-full p-2 ${isConnected ? 'bg-green-500/20' : 'bg-white/10'}`}>
+                    {isConnected ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Base Wallet (Source)</div>
+                    <div className="text-xs text-muted-foreground">
+                      {isConnected ? `Connected: ${baseAddress?.slice(0, 6)}...${baseAddress?.slice(-4)}` : 'Not connected'}
+                    </div>
+                  </div>
+                </div>
+                {!isConnected && (
+                  <div className="text-xs text-muted-foreground">
+                    Use header button →
+                  </div>
+                )}
+              </div>
+            </div>
 
-  if (!keetaAddress) {
-    return (
-      <Card className="bridge-card">
-        <CardHeader>
-          <CardTitle>Bridge from Base to Keeta</CardTitle>
-          <CardDescription>Connect Keeta wallet to receive tokens</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            Please connect your Keeta wallet to set a recipient address
+            {/* Keeta Wallet Status */}
+            <div className={`rounded-lg border p-4 ${keetaAddress ? 'border-green-500/30 bg-green-500/5' : 'border-white/10 bg-white/5'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`rounded-full p-2 ${keetaAddress ? 'bg-green-500/20' : 'bg-white/10'}`}>
+                    {keetaAddress ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <Loader2 className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Keeta Wallet (Destination)</div>
+                    <div className="text-xs text-muted-foreground">
+                      {keetaAddress ? `Connected: ${keetaAddress.slice(0, 12)}...${keetaAddress.slice(-6)}` : 'Not connected'}
+                    </div>
+                  </div>
+                </div>
+                {!keetaAddress && (
+                  <div className="text-xs text-muted-foreground">
+                    Use header button →
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-muted-foreground space-y-2">
+                <p className="font-semibold text-white">To use the bridge:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Connect your <strong>Base wallet</strong> (MetaMask, Coinbase, etc) using the header button</li>
+                  <li>Connect your <strong>Keeta wallet</strong> (Keythings) using the "Connect Keeta" button</li>
+                  <li>Both wallets must be connected to bridge tokens</li>
+                </ol>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
