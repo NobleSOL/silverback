@@ -20,13 +20,13 @@ import { toast } from "@/hooks/use-toast";
 import { useDexscreenerTokenStats } from "@/hooks/useDexscreener";
 import { formatUSD } from "@/lib/pricing";
 
-const TOKENS: Token[] = ["ETH", "USDC", "SBCK", "WBTC", "KTA"].map((sym) => ({
+const TOKENS: Token[] = ["ETH", "USDC", "BACK", "WBTC", "KTA"].map((sym) => ({
   ...tokenBySymbol(sym),
 }));
 
 export default function Index() {
   const [fromToken, setFromToken] = useState<Token>(tokenBySymbol("ETH"));
-  const [toToken, setToToken] = useState<Token>(tokenBySymbol("SBCK"));
+  const [toToken, setToToken] = useState<Token>(tokenBySymbol("BACK"));
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [selecting, setSelecting] = useState<null | "from" | "to">(null);
@@ -872,7 +872,7 @@ export default function Index() {
 
           <aside className="order-2 md:order-2 md:col-span-2 space-y-6">
             <div className="glass-card rounded-2xl p-5">
-              <TrendingPills symbols={["ETH", "KTA", "AERO", "SBCK"]} />
+              <TrendingPills symbols={["ETH", "KTA", "AERO", "BACK"]} />
             </div>
             <TransactionHistory transactions={transactions} />
           </aside>

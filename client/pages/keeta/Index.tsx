@@ -551,7 +551,7 @@ export default function KeetaIndex() {
           <aside className="order-2 md:order-2 md:col-span-2 space-y-6">
             {/* Trending on Keeta */}
             <div className="rounded-2xl border border-border/60 bg-card/40 p-5 backdrop-blur">
-              <TrendingPills symbols={["KTA", "USDK", "KBTC"]} title="Trending on Keeta" />
+              <TrendingPills symbols={["KTA", "BACK", "KBTC"]} title="Trending on Keeta" />
             </div>
           </aside>
         </div>

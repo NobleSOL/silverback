@@ -46,8 +46,8 @@ export const TOKEN_META: Record<string, TokenMeta> = {
     name: "Degen",
     logo: "https://assets.coingecko.com/coins/images/36110/standard/degen.png",
   },
-  SBCK: {
-    symbol: "SBCK",
+  BACK: {
+    symbol: "BACK",
     name: "Silverback",
     logo: "https://cdn.builder.io/api/v1/image/assets%2Fd70091a6f5494e0195b033a72f7e79ae%2Fee3a0a5652aa480f9aa42277503e94b2?format=webp&width=64",
   },
