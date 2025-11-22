@@ -2028,10 +2028,8 @@ export default function KeetaDex() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-        </div>
-      </div>
     </>
-    );
+  );
   }
 
   return (
@@ -2906,7 +2904,6 @@ export default function KeetaDex() {
         </DialogContent>
       </Dialog>
       </div>
-    </div>
     </div>
   );
 }
