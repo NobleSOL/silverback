@@ -830,7 +830,7 @@ export default function Pool() {
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold mb-2">Liquidity Pools</h1>
           <p className="text-muted-foreground text-sm">
-            Add liquidity to earn 0.3% trading fees on every swap
+            Add liquidity to earn trading fees on every swap
           </p>
         </div>
 
