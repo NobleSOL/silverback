@@ -8,9 +8,6 @@ import { v2Addresses, v2Abi } from "@/amm/v2";
 import { v3Addresses, nfpmAbi } from "@/amm/v3";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Plus, Trash2, DollarSign } from "lucide-react";
-import { BridgeFromBase } from "@/components/Bridge/BridgeFromBase";
-import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
-import "@/styles/bridge.css";
 
 type V2Position = {
   pairAddress: string;
@@ -123,7 +120,6 @@ export default function Portfolio() {
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
-  const { wallet: keetaWallet, refreshBalances } = useKeetaWallet();
 
   const [v2Positions, setV2Positions] = useState<V2Position[]>([]);
   const [v3Positions, setV3Positions] = useState<V3Position[]>([]);
@@ -678,17 +674,6 @@ export default function Portfolio() {
           <p className="mt-2 text-muted-foreground">
             Manage your liquidity positions across Silverback V2 and V3 pools
           </p>
-        </div>
-
-        {/* Base to Keeta Bridge */}
-        <div className="mb-8">
-          <BridgeFromBase
-            keetaAddress={keetaWallet?.address}
-            onBridgeComplete={() => {
-              refreshBalances?.();
-              fetchV2Positions();
-            }}
-          />
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "v2" | "v3")}>
