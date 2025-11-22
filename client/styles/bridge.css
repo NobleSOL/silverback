@@ -1,0 +1,118 @@
+/* Bridge Component Styles */
+
+.bridge-card {
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.1) 0%,
+    rgba(59, 130, 246, 0.05) 50%,
+    rgba(16, 185, 129, 0.05) 100%
+  );
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.bridge-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(139, 92, 246, 0.5),
+    rgba(59, 130, 246, 0.5),
+    rgba(16, 185, 129, 0.5)
+  );
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Loading animation for bridge status */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 20px rgba(139, 92, 246, 0.3),
+      0 0 40px rgba(139, 92, 246, 0.1);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow:
+      0 0 30px rgba(139, 92, 246, 0.5),
+      0 0 60px rgba(139, 92, 246, 0.2);
+  }
+}
+
+.bridge-card .glass-card {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Token selector buttons */
+.bridge-card button[class*='border-white'] {
+  transition: all 0.2s ease;
+}
+
+.bridge-card button[class*='border-white']:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
+}
+
+/* Input field */
+.bridge-card input[type='number'] {
+  color: white;
+}
+
+.bridge-card input[type='number']::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.bridge-card input[type='number']:focus {
+  outline: none;
+}
+
+/* Remove number input arrows */
+.bridge-card input[type='number']::-webkit-inner-spin-button,
+.bridge-card input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bridge-card input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* Status indicators */
+.bridge-status-pending {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.2));
+  border-left: 3px solid rgba(251, 191, 36, 0.5);
+}
+
+.bridge-status-completed {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.2));
+  border-left: 3px solid rgba(16, 185, 129, 0.5);
+}
+
+.bridge-status-failed {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.2));
+  border-left: 3px solid rgba(239, 68, 68, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .bridge-card {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    border-radius: 0;
+  }
+}
