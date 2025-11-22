@@ -86,7 +86,7 @@ export function KeetaPoolCard({
   };
 
   return (
-    <div className={`rounded-xl border bg-card/40 backdrop-blur p-3 sm:p-4 transition-all hover:border-brand/50 hover:shadow-lg w-full min-w-0 ${hasPosition ? 'border-brand/30 bg-brand/5' : 'border-border/60'}`}>
+    <div className={`glass-card rounded-xl p-3 sm:p-4 transition-all hover:border-white/30 w-full min-w-0 ${hasPosition ? 'border-sky-500/30 bg-sky-500/5' : ''}`}>
       <div className="flex items-start justify-between mb-3 min-w-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {/* Token pair display */}

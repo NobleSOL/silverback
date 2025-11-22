@@ -23,7 +23,7 @@ interface TransactionHistoryProps {
 export function TransactionHistory({ transactions }: TransactionHistoryProps) {
   if (transactions.length === 0) {
     return (
-      <div className="rounded-xl border border-border/60 bg-card/40 p-6 backdrop-blur">
+      <div className="glass-card rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-3">Recent Transactions</h2>
         <div className="text-center py-8 text-muted-foreground text-sm">
           <Clock className="mx-auto mb-2 h-8 w-8 opacity-50" />
@@ -35,7 +35,7 @@ export function TransactionHistory({ transactions }: TransactionHistoryProps) {
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/40 p-6 backdrop-blur">
+    <div className="glass-card rounded-xl p-6">
       <h2 className="text-lg font-semibold mb-3">Recent Transactions</h2>
       <div className="space-y-2">
         {transactions.slice(0, 5).map((tx) => (

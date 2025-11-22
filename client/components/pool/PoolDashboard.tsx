@@ -11,7 +11,7 @@ export function PoolDashboard({ totalTVL, totalPools, totalVolume24h, avgAPY }: 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       {/* Total TVL */}
-      <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur p-4 shadow-lg">
+      <div className="glass-card-elevated rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="rounded-full bg-sky-500/10 p-2">
             <DollarSign className="h-4 w-4 text-sky-400" />
@@ -23,7 +23,7 @@ export function PoolDashboard({ totalTVL, totalPools, totalVolume24h, avgAPY }: 
       </div>
 
       {/* Total Pools */}
-      <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur p-4 shadow-lg">
+      <div className="glass-card-elevated rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="rounded-full bg-purple-500/10 p-2">
             <Droplets className="h-4 w-4 text-purple-400" />
@@ -35,7 +35,7 @@ export function PoolDashboard({ totalTVL, totalPools, totalVolume24h, avgAPY }: 
       </div>
 
       {/* 24h Volume */}
-      <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur p-4 shadow-lg">
+      <div className="glass-card-elevated rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="rounded-full bg-green-500/10 p-2">
             <Activity className="h-4 w-4 text-green-400" />
@@ -47,7 +47,7 @@ export function PoolDashboard({ totalTVL, totalPools, totalVolume24h, avgAPY }: 
       </div>
 
       {/* Average APY */}
-      <div className="rounded-xl border border-border/60 bg-card/60 backdrop-blur p-4 shadow-lg">
+      <div className="glass-card-elevated rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <div className="rounded-full bg-amber-500/10 p-2">
             <TrendingUp className="h-4 w-4 text-amber-400" />

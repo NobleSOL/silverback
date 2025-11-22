@@ -825,7 +825,7 @@ export default function Pool() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(100%_60%_at_0%_0%,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_60%),radial-gradient(80%_50%_at_100%_100%,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_50%)]">
+    <div className="min-h-[calc(100vh-4rem)]">
       <div className="container py-10">
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold mb-2">Liquidity Pools</h1>
@@ -834,7 +834,7 @@ export default function Pool() {
           </p>
         </div>
 
-        <div className="mx-auto max-w-3xl rounded-2xl border border-border/60 bg-card/60 p-6 shadow-2xl shadow-black/30 backdrop-blur">
+        <div className="mx-auto max-w-3xl glass-card-elevated rounded-2xl p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex rounded-lg bg-secondary/60 p-1 text-xs border border-border/40">
@@ -988,7 +988,7 @@ export default function Pool() {
           </div>
 
           <Button
-            className="mt-4 h-12 w-full bg-brand text-white hover:bg-brand/90 disabled:opacity-50"
+            className="mt-4 h-12 w-full bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow disabled:opacity-50"
             disabled={cta.disabled || isWriting}
             onClick={() => {
               if (!isConnected) return connectPreferred();

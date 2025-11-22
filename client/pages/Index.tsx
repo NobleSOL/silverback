@@ -856,7 +856,7 @@ export default function Index() {
               )}
 
               <Button
-                className="mt-4 h-12 w-full bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-semibold crisp-button accent-glow"
+                className="mt-4 h-12 w-full bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow"
                 disabled={cta.disabled}
                 onClick={() => {
                   if (!isConnected) connectPreferred();

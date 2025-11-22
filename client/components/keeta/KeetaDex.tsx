@@ -1816,7 +1816,7 @@ export default function KeetaDex() {
       <>
         <div className="container py-10">
           <div className="mx-auto max-w-2xl">
-            <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-2xl shadow-black/30 backdrop-blur">
+            <Card className="glass-card-elevated rounded-2xl">
               <CardHeader>
                 <div className="flex items-center gap-2 mb-2">
                   <img
@@ -1833,13 +1833,13 @@ export default function KeetaDex() {
               <CardContent className="space-y-6">
               {isKeythingsInstalled() && (
                 <>
-                  <div className="rounded-xl border border-border/40 bg-secondary/40 p-6 backdrop-blur">
+                  <div className="glass-card rounded-xl p-6">
                     <h3 className="text-sm font-semibold mb-4">Connect Keythings Wallet</h3>
                     <div className="space-y-4">
                       <Button
                         onClick={connectKeythingsWallet}
                         disabled={loading}
-                        className="w-full bg-brand hover:bg-brand/90"
+                        className="w-full bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow"
                       >
                         {loading ? (
                           <>
@@ -1860,13 +1860,13 @@ export default function KeetaDex() {
                 </>
               )}
 
-              <div className="rounded-xl border border-border/40 bg-secondary/40 p-6 backdrop-blur">
+              <div className="glass-card rounded-xl p-6">
                 <h3 className="text-sm font-semibold mb-4">Generate New Wallet</h3>
                 <div className="space-y-4">
                   <Button
                     onClick={generateWallet}
                     disabled={loading}
-                    className="w-full bg-brand hover:bg-brand/90"
+                    className="w-full bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow"
                   >
                     {loading ? (
                       <>
@@ -1885,7 +1885,7 @@ export default function KeetaDex() {
 
               <div className="text-center text-sm text-muted-foreground">or</div>
 
-              <div className="rounded-xl border border-border/40 bg-secondary/40 p-6 backdrop-blur">
+              <div className="glass-card rounded-xl p-6">
                 <h3 className="text-sm font-semibold mb-4">Import Existing Wallet</h3>
                 <div className="space-y-4">
                   <Input
@@ -2021,24 +2021,27 @@ export default function KeetaDex() {
             <Button
               onClick={confirmSeedBackup}
               disabled={!seedBackupConfirmed}
-              className="bg-brand hover:bg-brand/90 w-full sm:w-auto text-xs sm:text-sm"
+              className="bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow w-full sm:w-auto text-xs sm:text-sm"
             >
               I've Saved My Seed - Continue
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </div>
+      </div>
     </>
     );
   }
 
   return (
-    <div className="container py-10">
+    <div className="min-h-[calc(100vh-4rem)]">
+      <div className="container py-10">
       <div className="mx-auto max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column - Wallet */}
           <div className="lg:col-span-5">
-            <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-2xl shadow-black/30 backdrop-blur sticky top-24 h-fit">
+            <Card className="glass-card-elevated rounded-2xl sticky top-24 h-fit">
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -2164,7 +2167,7 @@ export default function KeetaDex() {
           {/* Right Column - Tabs */}
           <div className="lg:col-span-7">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6 bg-card/60 border border-border/40">
+              <TabsList className="grid w-full grid-cols-3 mb-6 glass-card">
                 <TabsTrigger value="swap" className="text-xs sm:text-sm px-2 sm:px-4">
                   <ArrowRightLeft className="h-4 w-4 sm:mr-2" />
                   <span className="hidden sm:inline">Swap</span>
@@ -2181,7 +2184,7 @@ export default function KeetaDex() {
 
               {/* Pools Tab */}
               <TabsContent value="pools">
-                <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-2xl shadow-black/30 backdrop-blur">
+                <Card className="glass-card-elevated rounded-2xl">
                   <CardHeader>
                     <CardTitle>Liquidity Pools</CardTitle>
                     <CardDescription>View all pools and manage your positions</CardDescription>
@@ -2255,7 +2258,7 @@ export default function KeetaDex() {
 
               {/* Swap Tab */}
               <TabsContent value="swap">
-                <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-2xl shadow-black/30 backdrop-blur">
+                <Card className="glass-card-elevated rounded-2xl">
               <CardHeader>
                 <CardTitle>Swap</CardTitle>
                 <CardDescription>Trade tokens on Keeta Network</CardDescription>
@@ -2418,7 +2421,7 @@ export default function KeetaDex() {
 
           {/* Liquidity Tab */}
           <TabsContent value="liquidity">
-            <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-2xl shadow-black/30 backdrop-blur">
+            <Card className="glass-card-elevated rounded-2xl">
               <CardHeader>
                 <CardTitle>Liquidity</CardTitle>
                 <CardDescription>Add liquidity to pools and earn trading fees</CardDescription>
@@ -2829,7 +2832,7 @@ export default function KeetaDex() {
             <Button
               onClick={confirmSeedBackup}
               disabled={!seedBackupConfirmed}
-              className="bg-brand hover:bg-brand/90"
+              className="bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow"
             >
               I've Saved My Seed - Continue
             </Button>
@@ -2888,7 +2891,7 @@ export default function KeetaDex() {
             <Button
               onClick={executeSend}
               disabled={sending || !sendRecipient || !sendAmount}
-              className="bg-brand hover:bg-brand/90"
+              className="bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow"
             >
               {sending ? (
                 <>
@@ -2902,6 +2905,8 @@ export default function KeetaDex() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+    </div>
     </div>
   );
 }

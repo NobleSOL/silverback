@@ -12,11 +12,11 @@
    * A different format will require also updating the theme in tailwind.config.ts.
   */
   :root {
-    /* Silverback grayscale with all text white */
-    --background: 220 14% 6%;
+    /* Silverback grayscale with all text white - lighter background, darker cards */
+    --background: 220 12% 12%;
     --foreground: 0 0% 100%;
 
-    --card: 220 12% 10%;
+    --card: 220 14% 8%;
     --card-foreground: 0 0% 100%;
 
     --popover: 220 12% 8%;
@@ -62,10 +62,10 @@
   }
 
   .dark {
-    --background: 220 14% 6%;
+    --background: 220 12% 12%;
     --foreground: 0 0% 100%;
 
-    --card: 220 12% 10%;
+    --card: 220 14% 8%;
     --card-foreground: 0 0% 100%;
 
     --popover: 220 12% 8%;
@@ -123,10 +123,13 @@
       "Apple Color Emoji",
       "Segoe UI Emoji";
     @apply bg-background text-foreground;
-    /* Add subtle grain texture for depth */
+    /* Dynamic monochrome gradient background - lighter and more vibrant */
     background-image:
-      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.08) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.06) 0px, transparent 50%);
+      radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.18) 0%, transparent 40%),
+      radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.14) 0%, transparent 50%),
+      radial-gradient(circle at 40% 80%, rgba(255, 255, 255, 0.10) 0%, transparent 40%),
+      radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.16) 0%, transparent 45%);
+    background-attachment: fixed;
   }
 
   :where(p, span, li, h1, h2, h3, h4, h5, h6, a, button, label, td, th) {
@@ -142,22 +145,22 @@
 }
 
 @layer utilities {
-  /* Glass-morphism card effect */
+  /* Glass-morphism card effect - darker cards on lighter bg */
   .glass-card {
-    @apply backdrop-blur-xl bg-card/40 border border-white/10;
+    @apply backdrop-blur-xl bg-card/80 border border-white/15;
     box-shadow:
-      0 4px 24px -1px rgba(0, 0, 0, 0.4),
-      0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-      0 1px 2px 0 rgba(255, 255, 255, 0.1) inset;
+      0 8px 32px -2px rgba(0, 0, 0, 0.6),
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 2px 4px 0 rgba(255, 255, 255, 0.15) inset;
   }
 
-  /* Elevated glass card with more depth */
+  /* Elevated glass card with more depth - even darker for main content */
   .glass-card-elevated {
-    @apply backdrop-blur-xl bg-card/60 border border-white/15;
+    @apply backdrop-blur-xl bg-card/95 border border-white/20;
     box-shadow:
-      0 8px 32px -2px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-      0 2px 4px 0 rgba(255, 255, 255, 0.12) inset;
+      0 12px 48px -4px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+      0 3px 6px 0 rgba(255, 255, 255, 0.18) inset;
   }
 
   /* Crisp input styling */
@@ -177,18 +180,18 @@
   }
 
   .crisp-input:focus {
-    @apply border-sky-500/50 bg-secondary/90;
+    @apply border-white/40 bg-secondary/90;
     box-shadow:
-      0 0 0 3px rgba(56, 189, 248, 0.1),
+      0 0 0 3px rgba(255, 255, 255, 0.1),
       0 2px 6px 0 rgba(0, 0, 0, 0.4),
-      0 0 0 1px rgba(56, 189, 248, 0.2) inset;
+      0 0 0 1px rgba(255, 255, 255, 0.2) inset;
   }
 
-  /* Accent glow effect */
-  .accent-glow {
+  /* Monochrome glow effect */
+  .mono-glow {
     box-shadow:
-      0 0 20px -5px rgba(56, 189, 248, 0.3),
-      0 0 40px -10px rgba(139, 92, 246, 0.2);
+      0 0 20px -5px rgba(255, 255, 255, 0.25),
+      0 0 40px -10px rgba(255, 255, 255, 0.15);
   }
 
   /* Crisp button with depth */

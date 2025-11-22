@@ -428,7 +428,7 @@ export function ActivePoolsList({ onManage }: ActivePoolsListProps) {
             </div>
           </div>
         ) : sortedPools.length === 0 ? (
-          <div className="rounded-xl border border-border/60 bg-card/40 backdrop-blur p-8 text-center">
+          <div className="glass-card rounded-xl p-8 text-center">
             <p className="text-muted-foreground">
               {filterMyPools ? "You don't have any pool positions yet" : "No active pools found"}
             </p>

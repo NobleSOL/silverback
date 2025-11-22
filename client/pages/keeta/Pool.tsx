@@ -835,7 +835,7 @@ export default function KeetaPool() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(100%_60%_at_0%_0%,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_60%),radial-gradient(80%_50%_at_100%_100%,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_50%)]">
+    <div className="min-h-[calc(100vh-4rem)]">
       <div className="container py-10">
         <div className="mb-6 text-center">
           <h1 className="text-3xl font-bold mb-2">Liquidity Pools</h1>
@@ -844,14 +844,14 @@ export default function KeetaPool() {
           </p>
         </div>
 
-        <div className="mx-auto max-w-3xl rounded-2xl border border-border/60 bg-card/60 p-6 shadow-2xl shadow-black/30 backdrop-blur">
+        <div className="mx-auto max-w-3xl glass-card-elevated rounded-2xl p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setCreateMode(false)}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
                   !createMode
-                    ? "bg-brand text-white shadow-sm"
+                    ? "bg-gradient-to-br from-white/20 to-white/10 border border-white/20 text-white shadow-sm"
                     : "bg-secondary/60 hover:bg-secondary/80"
                 }`}
               >
@@ -861,7 +861,7 @@ export default function KeetaPool() {
                 onClick={() => setCreateMode(true)}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${
                   createMode
-                    ? "bg-brand text-white shadow-sm"
+                    ? "bg-gradient-to-br from-white/20 to-white/10 border border-white/20 text-white shadow-sm"
                     : "bg-secondary/60 hover:bg-secondary/80"
                 }`}
               >
@@ -892,7 +892,7 @@ export default function KeetaPool() {
                   // Create New Pool Mode
                   <div className="space-y-3">
                     {/* Token A Input */}
-                    <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="glass-card rounded-xl p-4">
                       <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                         <span>Token A</span>
                         {newPoolTokenA && wallet && (
@@ -962,7 +962,7 @@ export default function KeetaPool() {
                     </div>
 
                     {/* Token B Input */}
-                    <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="glass-card rounded-xl p-4">
                       <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                         <span>Token B</span>
                         {newPoolTokenB && wallet && (
@@ -1026,7 +1026,7 @@ export default function KeetaPool() {
                     <Button
                       onClick={!wallet ? connectKeythingsWallet : createPool}
                       disabled={wallet ? (creatingPool || !newPoolTokenA || !newPoolTokenB || !liqAmountA || !liqAmountB) : loading}
-                      className="w-full h-12 text-base font-semibold"
+                      className="w-full h-12 text-base font-semibold bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white crisp-button mono-glow disabled:opacity-50"
                     >
                       {!wallet ? (
                         loading ? (
@@ -1059,7 +1059,7 @@ export default function KeetaPool() {
                   return (
                     <>
                       {/* Token A Input */}
-                      <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                      <div className="glass-card rounded-xl p-4">
                         <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{pool.symbolA || ''}</span>
                           {wallet && (
@@ -1109,7 +1109,7 @@ export default function KeetaPool() {
                       </div>
 
                       {/* Token B Input */}
-                      <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                      <div className="glass-card rounded-xl p-4">
                         <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                           <span>{pool.symbolB || ''}</span>
                           {wallet && (
@@ -1153,7 +1153,7 @@ export default function KeetaPool() {
                       <Button
                         onClick={!wallet ? connectKeythingsWallet : addLiquidity}
                         disabled={wallet ? (addingLiq || !liqAmountA || !liqAmountB) : loading}
-                        className="w-full h-12 text-base font-semibold"
+                        className="w-full h-12 text-base font-semibold bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white crisp-button mono-glow disabled:opacity-50"
                       >
                         {!wallet ? (
                           loading ? (
@@ -1194,7 +1194,7 @@ export default function KeetaPool() {
 
           <div className="mt-6">
             {allPools.length === 0 ? (
-              <div className="rounded-2xl border border-border/60 bg-card/60 p-12 shadow-2xl shadow-black/30 backdrop-blur text-center text-muted-foreground">
+              <div className="glass-card-elevated rounded-2xl p-12 text-center text-muted-foreground">
                 <Droplets className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>No pools yet. Be the first to create one!</p>
               </div>

@@ -370,12 +370,12 @@ export default function KeetaIndex() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(100%_60%_at_0%_0%,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_60%),radial-gradient(80%_50%_at_100%_100%,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_50%)]">
+    <div className="min-h-[calc(100vh-4rem)]">
       <div className="container py-10">
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-5">
           {/* Main Section - Swap (Left, 60% width) */}
           <section className="order-1 md:order-1 md:col-span-3">
-            <Card className="rounded-2xl border border-border/60 bg-card/60 p-6 shadow-2xl shadow-black/30 backdrop-blur">
+            <Card className="glass-card-elevated rounded-2xl p-6">
               <div className="mb-4 flex items-center justify-between">
                 <h1 className="text-xl font-semibold">Swap</h1>
               </div>
@@ -391,7 +391,7 @@ export default function KeetaIndex() {
                 </div>
 
                 {/* From Token Input */}
-                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                <div className="glass-card rounded-xl p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You pay</span>
                     {swapTokenIn && wallet && (
@@ -441,7 +441,7 @@ export default function KeetaIndex() {
                 </div>
 
                 {/* To Token Input */}
-                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                <div className="glass-card rounded-xl p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You receive</span>
                     {selectedPoolForSwap && wallet && (() => {
@@ -608,7 +608,7 @@ export default function KeetaIndex() {
             <Button
               onClick={executeSend}
               disabled={sending || !sendRecipient || !sendAmount}
-              className="bg-brand hover:bg-brand/90"
+              className="bg-gradient-to-br from-white/20 to-white/10 hover:from-white/30 hover:to-white/20 border border-white/20 text-white font-semibold crisp-button mono-glow disabled:opacity-50"
             >
               {sending ? (
                 <>

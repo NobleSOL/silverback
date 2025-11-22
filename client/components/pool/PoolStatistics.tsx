@@ -124,7 +124,7 @@ export function PoolStatistics({
     : 0;
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card/40 p-4 backdrop-blur space-y-3">
+    <div className="glass-card rounded-xl p-4 space-y-3">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
         Pool Statistics
       </h3>

@@ -44,7 +44,7 @@ export function Header() {
   }, [open, mobileOpen]);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/60 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-border/60 backdrop-blur bg-black">
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2">
