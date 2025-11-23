@@ -672,13 +672,13 @@ export default function Portfolio() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold">Liquidity Management</h1>
           <p className="mt-2 text-muted-foreground">
-            Manage your liquidity positions across Silverback and Concentrated pools
+            Manage your liquidity positions across Classic and Concentrated Liquidity Pools
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "v2" | "v3")}>
           <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="v2">Silverback Positions</TabsTrigger>
+            <TabsTrigger value="v2">Classic Positions</TabsTrigger>
             <TabsTrigger value="v3">Concentrated Positions</TabsTrigger>
           </TabsList>
 
