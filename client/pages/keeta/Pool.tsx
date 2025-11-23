@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { KeetaPoolCard, KeetaPoolCardData } from "@/components/keeta/KeetaPoolCard";
 import { PoolDashboard } from "@/components/pool/PoolDashboard";
+import TokenLogo from "@/components/shared/TokenLogo";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import {
   addLiquidity as addLiquidityClient,
@@ -902,37 +903,43 @@ export default function KeetaPool() {
                         )}
                       </div>
                       <div className="flex items-center gap-3">
-                        <select
-                          value={newPoolTokenA}
-                          onChange={(e) => {
-                            const tokenA = e.target.value;
-                            setNewPoolTokenA(tokenA);
+                        <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                          {newPoolTokenA && (() => {
+                            const token = wallet?.tokens.find(t => t.address === newPoolTokenA);
+                            return token ? <TokenLogo src={token.logoUrl} alt={token.symbol} size={20} /> : null;
+                          })()}
+                          <select
+                            value={newPoolTokenA}
+                            onChange={(e) => {
+                              const tokenA = e.target.value;
+                              setNewPoolTokenA(tokenA);
 
-                            if (tokenA && newPoolTokenB) {
-                              const existingPool = pools.find(p =>
-                                (p.tokenA === tokenA && p.tokenB === newPoolTokenB) ||
-                                (p.tokenA === newPoolTokenB && p.tokenB === tokenA)
-                              );
+                              if (tokenA && newPoolTokenB) {
+                                const existingPool = pools.find(p =>
+                                  (p.tokenA === tokenA && p.tokenB === newPoolTokenB) ||
+                                  (p.tokenA === newPoolTokenB && p.tokenB === tokenA)
+                                );
 
-                              if (existingPool) {
-                                setCreateMode(false);
-                                setSelectedPoolForLiq(existingPool.poolAddress);
-                                toast({
-                                  title: "Pool Already Exists",
-                                  description: "Switched to existing pool. Add liquidity to it instead.",
-                                });
+                                if (existingPool) {
+                                  setCreateMode(false);
+                                  setSelectedPoolForLiq(existingPool.poolAddress);
+                                  toast({
+                                    title: "Pool Already Exists",
+                                    description: "Switched to existing pool. Add liquidity to it instead.",
+                                  });
+                                }
                               }
-                            }
-                          }}
-                          className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 text-sm font-semibold border-none outline-none cursor-pointer"
-                        >
-                          <option value="">Select</option>
-                          {wallet?.tokens.map((token) => (
-                            <option key={token.address} value={token.address}>
-                              {token.symbol}
-                            </option>
-                          ))}
-                        </select>
+                            }}
+                            className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1"
+                          >
+                            <option value="">Select</option>
+                            {wallet?.tokens.map((token) => (
+                              <option key={token.address} value={token.address}>
+                                {token.symbol}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         <input
                           inputMode="decimal"
                           pattern="^[0-9]*[.,]?[0-9]*$"
@@ -972,40 +979,46 @@ export default function KeetaPool() {
                         )}
                       </div>
                       <div className="flex items-center gap-3">
-                        <select
-                          value={newPoolTokenB}
-                          onChange={(e) => {
-                            const tokenB = e.target.value;
-                            setNewPoolTokenB(tokenB);
+                        <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                          {newPoolTokenB && (() => {
+                            const token = wallet?.tokens.find(t => t.address === newPoolTokenB);
+                            return token ? <TokenLogo src={token.logoUrl} alt={token.symbol} size={20} /> : null;
+                          })()}
+                          <select
+                            value={newPoolTokenB}
+                            onChange={(e) => {
+                              const tokenB = e.target.value;
+                              setNewPoolTokenB(tokenB);
 
-                            if (newPoolTokenA && tokenB) {
-                              const existingPool = pools.find(p =>
-                                (p.tokenA === newPoolTokenA && p.tokenB === tokenB) ||
-                                (p.tokenA === tokenB && p.tokenB === newPoolTokenA)
-                              );
+                              if (newPoolTokenA && tokenB) {
+                                const existingPool = pools.find(p =>
+                                  (p.tokenA === newPoolTokenA && p.tokenB === tokenB) ||
+                                  (p.tokenA === tokenB && p.tokenB === newPoolTokenA)
+                                );
 
-                              if (existingPool) {
-                                setCreateMode(false);
-                                setSelectedPoolForLiq(existingPool.poolAddress);
-                                toast({
-                                  title: "Pool Already Exists",
-                                  description: "Switched to existing pool. Add liquidity to it instead.",
-                                });
+                                if (existingPool) {
+                                  setCreateMode(false);
+                                  setSelectedPoolForLiq(existingPool.poolAddress);
+                                  toast({
+                                    title: "Pool Already Exists",
+                                    description: "Switched to existing pool. Add liquidity to it instead.",
+                                  });
+                                }
                               }
-                            }
-                          }}
-                          disabled={!newPoolTokenA}
-                          className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 text-sm font-semibold border-none outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <option value="">Select</option>
-                          {wallet?.tokens
-                            .filter((token) => token.address !== newPoolTokenA)
-                            .map((token) => (
-                              <option key={token.address} value={token.address}>
-                                {token.symbol}
-                              </option>
-                            ))}
-                        </select>
+                            }}
+                            disabled={!newPoolTokenA}
+                            className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <option value="">Select</option>
+                            {wallet?.tokens
+                              .filter((token) => token.address !== newPoolTokenA)
+                              .map((token) => (
+                                <option key={token.address} value={token.address}>
+                                  {token.symbol}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
                         <input
                           inputMode="decimal"
                           pattern="^[0-9]*[.,]?[0-9]*$"

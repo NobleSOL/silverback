@@ -11,6 +11,7 @@ import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keeta-anchor";
 import { createKeetaClientFromSeed } from "@/lib/keeta-client";
 import QuickFill from "@/components/shared/QuickFill";
+import TokenLogo from "@/components/shared/TokenLogo";
 
 export default function KeetaAnchor() {
   const { wallet, sortedTokens, tokenPrices, connectKeythingsWallet, loading } = useKeetaWallet();
@@ -198,18 +199,21 @@ export default function KeetaAnchor() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <select
-                      value={tokenFrom}
-                      onChange={(e) => setTokenFrom(e.target.value)}
-                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 text-sm font-semibold border-none outline-none cursor-pointer"
-                    >
-                      <option value="">Select</option>
-                      {sortedTokens.map((token) => (
-                        <option key={token.address} value={token.address}>
-                          {token.symbol}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                      {fromTokenInfo && <TokenLogo src={fromTokenInfo.logoUrl} alt={fromTokenInfo.symbol} size={20} />}
+                      <select
+                        value={tokenFrom}
+                        onChange={(e) => setTokenFrom(e.target.value)}
+                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1"
+                      >
+                        <option value="">Select</option>
+                        {sortedTokens.map((token) => (
+                          <option key={token.address} value={token.address}>
+                            {token.symbol}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <input
                       inputMode="decimal"
                       pattern="^[0-9]*[.,]?[0-9]*$"
@@ -249,21 +253,24 @@ export default function KeetaAnchor() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <select
-                      value={tokenTo}
-                      onChange={(e) => setTokenTo(e.target.value)}
-                      disabled={!tokenFrom}
-                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 text-sm font-semibold border-none outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="">Select</option>
-                      {sortedTokens
-                        .filter((t) => t.address !== tokenFrom)
-                        .map((token) => (
-                          <option key={token.address} value={token.address}>
-                            {token.symbol}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                      {toTokenInfo && <TokenLogo src={toTokenInfo.logoUrl} alt={toTokenInfo.symbol} size={20} />}
+                      <select
+                        value={tokenTo}
+                        onChange={(e) => setTokenTo(e.target.value)}
+                        disabled={!tokenFrom}
+                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="">Select</option>
+                        {sortedTokens
+                          .filter((t) => t.address !== tokenFrom)
+                          .map((token) => (
+                            <option key={token.address} value={token.address}>
+                              {token.symbol}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                     <input
                       readOnly
                       value={selectedQuote ? selectedQuote.amountOut : "0.00"}
