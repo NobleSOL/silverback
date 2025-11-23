@@ -4,18 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Silverback DEX is a production-ready decentralized exchange with:
+Silverback DEX is a **dual-network decentralized exchange** supporting both Base and Keeta networks:
+
+### Base Network
 - **Frontend**: React 18 + Vite + TypeScript + TailwindCSS 3 + wagmi
 - **Smart Contracts**: Solidity 0.8.20 Uniswap V2-style AMM with custom router
-- **Backend**: Express server integrated with Vite dev server (minimal endpoints)
+- **Features**: Classic (V2) and Concentrated (V3) liquidity pools + OpenOcean aggregation
 
-The project combines a custom Silverback AMM (V2-style constant product) with OpenOcean aggregator integration for optimal swap routing.
+### Keeta Network
+- **Frontend**: React 18 + Vite + TypeScript + TailwindCSS 3
+- **SDK**: @keetanetwork/keetanet-client + @keetanetwork/anchor
+- **Features**: Pool-based AMM + FX Anchor trading aggregation
+- **Wallet**: Keythings browser extension integration
+- **Backend**: Express server with Keeta blockchain APIs
+
+**Strategic Position**: The platform serves as both a liquidity provider (via pools/anchor) and a trading aggregator (showing best rates across all providers).
 
 ## Development Commands
 
 ### Frontend & Server
 ```bash
-pnpm dev                    # Start dev server (client + server on port 8080)
+pnpm dev                    # Start dev server (client + server on port 3000)
 pnpm build                  # Production build (client + server)
 pnpm build:client           # Build frontend only
 pnpm build:server           # Build backend only
@@ -23,6 +32,8 @@ pnpm start                  # Start production server
 pnpm typecheck              # TypeScript validation
 pnpm test                   # Run Vitest tests
 ```
+
+**Note**: Port 3000 is required for Keythings wallet compatibility (localhost:3000 is allowlisted)
 
 ### Smart Contracts (Hardhat)
 ```bash
@@ -77,41 +88,66 @@ The core AMM consists of three main contracts:
 
 ```
 client/
-├── pages/              # Route components
-│   ├── Index.tsx       # Swap interface (home page)
-│   ├── Pool.tsx        # Liquidity management
-│   └── Portfolio.tsx   # User holdings
+├── pages/              # Base DEX pages
+│   ├── Index.tsx       # Swap interface (Base)
+│   ├── Pool.tsx        # Liquidity management (Base)
+│   └── Portfolio.tsx   # Classic + Concentrated positions (Base)
+├── pages/keeta/        # Keeta DEX pages
+│   ├── Index.tsx       # Pool-based swap (Keeta)
+│   ├── Pool.tsx        # Create/manage pools (Keeta)
+│   └── Anchor.tsx      # FX Anchor trading aggregator (Keeta)
 ├── components/
 │   ├── swap/           # Swap-specific components
-│   ├── shared/         # Reusable components (slippage, token selector)
-│   ├── wallet/         # Wallet connection
+│   ├── shared/         # Reusable components (slippage, token selector, QuickFill)
+│   ├── wallet/         # Wallet connection (wagmi for Base)
+│   ├── keeta/          # Keeta-specific components
 │   └── ui/             # Radix UI component library
+├── contexts/
+│   ├── NetworkContext.tsx      # Base/Keeta network switching
+│   └── KeetaWalletContext.tsx  # Keeta wallet state management
+├── lib/
+│   ├── keeta-client.ts         # Keeta blockchain client utilities
+│   ├── keeta-anchor.ts         # FX Anchor SDK integration
+│   └── keythings-provider.ts   # Keythings wallet integration
 ├── amm/
-│   ├── config.ts       # Contract addresses and environment vars
-│   ├── v2.ts           # V2 AMM interaction logic
-│   └── v3.ts           # V3 pool support (via existing NFPM)
-├── aggregator/         # OpenOcean integration
-├── wallet/             # wagmi configuration
-└── App.tsx             # React Router setup
+│   ├── config.ts       # Contract addresses and environment vars (Base)
+│   ├── v2.ts           # V2 AMM interaction logic (Base)
+│   └── v3.ts           # V3 pool support via NFPM (Base)
+├── aggregator/         # OpenOcean integration (Base)
+├── wallet/             # wagmi configuration (Base)
+└── App.tsx             # Network-aware routing
 ```
 
 **Environment variables** (`.env`):
 ```
+# Base Network
 VITE_SB_V2_FACTORY=<deployed factory address>
 VITE_SB_V2_ROUTER=<deployed router address>
 VITE_V3_NFPM=<NonfungiblePositionManager address>
 VITE_BASE_RPC_URL=https://mainnet.base.org
 VITE_WALLETCONNECT_PROJECT_ID=<project id>
+
+# Keeta Network
+VITE_KEETA_API_BASE=<backend URL for Keeta APIs>
 ```
 
 ### Backend (`/server`)
 
-Minimal Express server. Only create new endpoints when strictly necessary (private key handling, database operations, etc.).
+Express server providing Keeta blockchain APIs. Base network operations are handled client-side via wagmi.
 
 ```
 server/
-├── index.ts       # Express setup and route registration
-└── routes/        # API handlers (prefixed with /api/)
+├── index.ts                # Express setup and route registration
+├── keeta-impl/
+│   ├── routes/
+│   │   ├── pools.js        # Pool creation, liquidity, swap
+│   │   ├── pricing.js      # Token price data
+│   │   └── transfer.js     # Token transfers
+│   └── utils/
+│       ├── client.js       # Keeta client utilities
+│       ├── constants.js    # Network constants
+│       └── anchor.js       # FX Anchor placeholders (future)
+└── routes/                 # Additional API handlers
 ```
 
 ## Key Development Patterns
@@ -157,10 +193,50 @@ Contracts deployed to Base Sepolia testnet (chainId: 84532). Deployment scripts 
 
 Frontend deployable to Netlify (config in `netlify.toml`).
 
+## Network Architecture
+
+### Base DEX (EVM)
+- **Swap Page**: Classic (V2) and Concentrated (V3) pools + OpenOcean aggregation
+- **Pool Page**: Add/remove liquidity to pools
+- **Positions Page**: View Classic and Concentrated positions
+- **Wallet**: wagmi + viem for EVM interaction
+
+### Keeta DEX (Keeta Blockchain)
+- **Swap Page**: Pool-based AMM swaps (Uniswap V2 style)
+- **Pool Page**: Create pools, add/remove liquidity
+- **Anchor Page**: FX Anchor trading aggregator (queries ALL anchor providers)
+- **Wallet**: Keythings browser extension (localhost:3000 required)
+- **Backend**: Express APIs for pool creation, swaps, transfers
+
+## FX Anchor Integration
+
+The Anchor page (`/pages/keeta/Anchor.tsx`) implements a **trading aggregator** using the `@keetanetwork/anchor` SDK:
+
+### How It Works
+1. User selects tokens and amount
+2. Client queries ALL registered FX anchor providers on Keeta network
+3. Displays best quote across all providers
+4. Executes atomic swap through selected anchor
+
+### Strategic Value
+- **Aggregator Platform**: Show users best rates across all Keeta anchors
+- **Future Liquidity Provider**: When BACK token launches, run own anchor
+- **Fee Income**: Earn from both aggregation volume + anchor swaps
+
+### Key Files
+- `client/lib/keeta-anchor.ts` - FX Anchor SDK integration
+- `client/pages/keeta/Anchor.tsx` - Trading UI
+- `server/keeta-impl/utils/anchor.js` - Server-side anchor placeholders
+
+**Status**: UI ready, awaiting anchor providers on mainnet. Currently on testnet (`api.test.keeta.com`).
+
 ## Important Notes
 
-- This is a hybrid DEX: uses Silverback V2 AMM for owned liquidity + OpenOcean for aggregated routing
+- **Dual-network DEX**: Base (EVM) + Keeta (custom blockchain)
+- **Network switching**: Header dropdown toggles between Base/Keeta, changes all pages
+- **Design system**: Glass-morphism cards, monochrome theme, consistent across networks
 - Path aliases: `@/*` → `client/`, `@shared/*` → `shared/`
-- Single-port development (8080) with Vite HMR for both client and server
+- **Development port**: 3000 (required for Keythings wallet allowlist)
+- Single-port development with Vite HMR for both client and server
 - Package manager: **pnpm** (specified in package.json)
-- The project uses React Router 6 in SPA mode (not file-based routing)
+- React Router 6 in SPA mode (not file-based routing)

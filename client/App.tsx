@@ -19,7 +19,7 @@ import { NetworkProvider, useNetwork } from "./contexts/NetworkContext";
 import { KeetaWalletProvider } from "./contexts/KeetaWalletContext";
 import KeetaIndex from "./pages/keeta/Index";
 import KeetaPool from "./pages/keeta/Pool";
-import KeetaPortfolio from "./pages/keeta/Portfolio";
+import KeetaAnchor from "./pages/keeta/Anchor";
 
 const queryClient = new QueryClient();
 
@@ -33,7 +33,7 @@ const AppContent = () => {
         <Routes>
           <Route path="/" element={<KeetaIndex />} />
           <Route path="/pool" element={<KeetaPool />} />
-          <Route path="/portfolio" element={<KeetaPortfolio />} />
+          <Route path="/portfolio" element={<KeetaAnchor />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </KeetaWalletProvider>

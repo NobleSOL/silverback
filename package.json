@@ -25,6 +25,7 @@
     "verify:v2:sepolia": "hardhat run scripts/hh-verify-v2.ts --network base-sepolia"
   },
   "dependencies": {
+    "@keetanetwork/anchor": "^0.0.22",
     "@keetanetwork/keetanet-client": "^0.14.11",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
