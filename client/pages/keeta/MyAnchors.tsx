@@ -124,12 +124,12 @@ export default function MyAnchors() {
 
       // Step 2: Add liquidity (user sends tokens to pool)
       const { createKeetaClientFromSeed } = await import("@/lib/keeta-client");
-      const { lib } = await import("@keetanetwork/anchor");
+      const KeetaNet = await import('@keetanetwork/keetanet-client');
       const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
 
-      const poolAccount = lib.Account.fromPublicKeyString(pool.poolAddress);
-      const tokenAAccount = lib.Account.fromPublicKeyString(tokenA);
-      const tokenBAccount = lib.Account.fromPublicKeyString(tokenB);
+      const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(pool.poolAddress);
+      const tokenAAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenA);
+      const tokenBAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenB);
 
       // Get token decimals
       const tokenAInfo = sortedTokens.find(t => t.address === tokenA);
