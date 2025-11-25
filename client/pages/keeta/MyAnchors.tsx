@@ -38,6 +38,13 @@ interface AnchorPool {
   volume24h?: string;
   swapCount24h?: number;
   feesCollected24h?: string;
+  // Token metadata from backend
+  symbolA?: string;
+  symbolB?: string;
+  decimalsA?: number;
+  decimalsB?: number;
+  iconA?: string | null;
+  iconB?: string | null;
 }
 
 export default function MyAnchors() {
@@ -510,16 +517,18 @@ export default function MyAnchors() {
                 </div>
               ) : (
                 myPools.map((pool) => {
-                  const tokenAInfo = sortedTokens.find(t => t.address === pool.token_a);
-                  const tokenBInfo = sortedTokens.find(t => t.address === pool.token_b);
+                  // Use metadata from backend API (symbolA, symbolB, iconA, iconB)
+                  const symbolA = pool.symbolA || pool.token_a.slice(0, 8);
+                  const symbolB = pool.symbolB || pool.token_b.slice(0, 8);
+                  const iconA = pool.iconA || getTokenLogo(symbolA);
 
                   return (
                     <div key={pool.pool_address} className="glass-card rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          {tokenAInfo && <TokenLogo src={getTokenLogo(tokenAInfo.symbol, tokenAInfo.logoUrl)} alt={tokenAInfo.symbol} size={24} />}
+                          <TokenLogo src={iconA} alt={symbolA} size={24} />
                           <span className="font-semibold">
-                            {tokenAInfo?.symbol || 'TOKEN'} / {tokenBInfo?.symbol || 'TOKEN'}
+                            {symbolA} / {symbolB}
                           </span>
                           <span className={`text-xs px-2 py-1 rounded-full ${
                             pool.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'

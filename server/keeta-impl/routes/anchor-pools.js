@@ -61,10 +61,51 @@ router.get('/creator/:address', async (req, res) => {
     const repository = getAnchorRepository();
     const pools = await repository.getAnchorPoolsByCreator(address);
 
+    // Enhance pools with token metadata (symbols, decimals, icons)
+    const { fetchTokenMetadata } = await import('../utils/client.js');
+    const enhancedPools = await Promise.all(
+      pools.map(async (pool) => {
+        try {
+          // Fetch metadata for both tokens
+          const [metadataA, metadataB, volumeData] = await Promise.all([
+            fetchTokenMetadata(pool.token_a),
+            fetchTokenMetadata(pool.token_b),
+            repository.getAnchor24hVolume(pool.pool_address).catch(() => null),
+          ]);
+
+          return {
+            ...pool,
+            symbolA: metadataA.symbol,
+            symbolB: metadataB.symbol,
+            decimalsA: metadataA.decimals,
+            decimalsB: metadataB.decimals,
+            iconA: metadataA.icon,
+            iconB: metadataB.icon,
+            volume24h: volumeData?.total_volume_in || '0',
+            swapCount24h: volumeData?.swap_count || 0,
+            feesCollected24h: volumeData?.total_fees || '0',
+          };
+        } catch (error) {
+          console.warn(`Failed to fetch metadata for pool ${pool.pool_address}:`, error.message);
+          // Return pool with fallback metadata
+          return {
+            ...pool,
+            symbolA: pool.token_a.slice(0, 8),
+            symbolB: pool.token_b.slice(0, 8),
+            decimalsA: 9,
+            decimalsB: 9,
+            volume24h: '0',
+            swapCount24h: 0,
+            feesCollected24h: '0',
+          };
+        }
+      })
+    );
+
     res.json({
       success: true,
-      pools,
-      count: pools.length,
+      pools: enhancedPools,
+      count: enhancedPools.length,
     });
   } catch (error) {
     console.error('Get creator pools error:', error);
