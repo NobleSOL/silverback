@@ -20,6 +20,7 @@ import { KeetaWalletProvider } from "./contexts/KeetaWalletContext";
 import KeetaIndex from "./pages/keeta/Index";
 import KeetaPool from "./pages/keeta/Pool";
 import KeetaAnchor from "./pages/keeta/Anchor";
+import KeetaMyAnchors from "./pages/keeta/MyAnchors";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const AppContent = () => {
           <Route path="/" element={<KeetaIndex />} />
           <Route path="/pool" element={<KeetaPool />} />
           <Route path="/portfolio" element={<KeetaAnchor />} />
+          <Route path="/my-anchors" element={<KeetaMyAnchors />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </KeetaWalletProvider>
