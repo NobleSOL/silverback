@@ -128,12 +128,17 @@ export default function KeetaAnchor() {
     setExecuting(true);
     try {
       console.log("🚀 Executing anchor swap...");
-      const result = await executeAnchorSwap(selectedQuote);
+
+      // Create user client for Silverback swaps
+      const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
+
+      // Execute swap with user client and address
+      const result = await executeAnchorSwap(selectedQuote, userClient, wallet.address);
 
       if (result.success) {
         toast({
           title: "Swap executed!",
-          description: `Exchange ID: ${result.exchangeID?.slice(0, 12)}...`,
+          description: `Provider: ${selectedQuote.providerID}`,
         });
 
         // Reset form
@@ -306,7 +311,9 @@ export default function KeetaAnchor() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Provider</span>
-                      <span className="text-sky-400 font-medium">FX Anchor</span>
+                      <span className={selectedQuote.providerID === 'Silverback' ? 'text-orange-400 font-medium' : 'text-sky-400 font-medium'}>
+                        {selectedQuote.providerID}
+                      </span>
                     </div>
                   </div>
                 )}

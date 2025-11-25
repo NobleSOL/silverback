@@ -14,7 +14,9 @@ export type AnchorQuote = {
   amountOutAtomic: bigint; // Atomic units
   priceImpact: number;
   fee: string; // Fee in token terms
-  providerID: string;
+  providerID: string; // 'FX Anchor' or 'Silverback'
+  poolAddress?: string; // For Silverback pools
+  feeBps?: number; // For Silverback pools
   rawQuote: any; // Keep raw quote for execution
 };
 
@@ -40,7 +42,7 @@ export function createFXClient(userClient: any, config?: any): any {
 
 /**
  * Get anchor quotes for a token swap
- * Returns quotes from multiple anchor providers
+ * Returns quotes from multiple anchor providers (FX Anchors + Silverback pools)
  */
 export async function getAnchorQuotes(
   userClient: any,
@@ -51,62 +53,126 @@ export async function getAnchorQuotes(
   decimalsTo: number = 9
 ): Promise<AnchorQuote[]> {
   try {
-    const fxClient = createFXClient(userClient);
-
-    // Create conversion request using the Account.fromPublicKeyString format
-    const fromAccount = KeetaNetLib.Account.fromPublicKeyString(fromToken);
-    const toAccount = KeetaNetLib.Account.fromPublicKeyString(toToken);
-
-    const conversionRequest = {
-      from: fromAccount,
-      to: toAccount,
-      amount: amount,
-      affinity: 'from' as const, // Amount is in 'from' token
-    };
-
-    console.log('📊 Fetching anchor quotes for:', {
+    console.log('📊 Fetching quotes from all providers:', {
       from: fromToken.slice(0, 12) + '...',
       to: toToken.slice(0, 12) + '...',
       amount: amount.toString(),
     });
 
-    // Get quotes from all available anchor providers
-    const quotes = await fxClient.getQuotes(conversionRequest);
+    const allQuotes: AnchorQuote[] = [];
 
-    if (!quotes || quotes.length === 0) {
-      console.log('⚠️ No anchor quotes available');
+    // 1. Fetch FX Anchor quotes
+    try {
+      const fxClient = createFXClient(userClient);
+
+      // Create conversion request using the Account.fromPublicKeyString format
+      const fromAccount = KeetaNetLib.Account.fromPublicKeyString(fromToken);
+      const toAccount = KeetaNetLib.Account.fromPublicKeyString(toToken);
+
+      const conversionRequest = {
+        from: fromAccount,
+        to: toAccount,
+        amount: amount,
+        affinity: 'from' as const, // Amount is in 'from' token
+      };
+
+      const quotes = await fxClient.getQuotes(conversionRequest);
+
+      if (quotes && quotes.length > 0) {
+        console.log(`✅ Received ${quotes.length} FX Anchor quote(s)`);
+
+        // Convert quotes to our format
+        const fxQuotes: AnchorQuote[] = quotes.map((quoteWrapper) => {
+          const quote = quoteWrapper.quote;
+          const amountInHuman = Number(amount) / Math.pow(10, decimalsFrom);
+          const amountOutHuman = Number(quote.convertedAmount) / Math.pow(10, decimalsTo);
+          const feeHuman = Number(quote.cost.amount) / Math.pow(10, decimalsFrom);
+
+          // Calculate price impact (rough estimate)
+          // For anchors, impact is usually minimal as they provide fixed quotes
+          const priceImpact = 0.1; // Anchors typically have very low impact
+
+          return {
+            from: fromToken,
+            to: toToken,
+            amountIn: amountInHuman.toFixed(6),
+            amountOut: amountOutHuman.toFixed(6),
+            amountOutAtomic: quote.convertedAmount,
+            priceImpact,
+            fee: feeHuman.toFixed(6),
+            providerID: 'FX Anchor',
+            rawQuote: quoteWrapper,
+          };
+        });
+
+        allQuotes.push(...fxQuotes);
+      } else {
+        console.log('⚠️ No FX Anchor quotes available');
+      }
+    } catch (fxError) {
+      console.warn('⚠️ FX Anchor quote fetch failed:', fxError);
+    }
+
+    // 2. Fetch Silverback pool quotes
+    try {
+      const response = await fetch('/api/anchor/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenIn: fromToken,
+          tokenOut: toToken,
+          amountIn: amount.toString(),
+          decimalsIn: decimalsFrom,
+          decimalsOut: decimalsTo,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.success && data.quote) {
+          console.log(`✅ Received Silverback quote: ${data.quote.amountOutFormatted} (fee: ${data.quote.feeBps / 100}%)`);
+
+          // Convert Silverback quote to AnchorQuote format
+          const silverbackQuote: AnchorQuote = {
+            from: fromToken,
+            to: toToken,
+            amountIn: data.quote.amountInFormatted,
+            amountOut: data.quote.amountOutFormatted,
+            amountOutAtomic: BigInt(data.quote.amountOut),
+            priceImpact: data.quote.priceImpact,
+            fee: data.quote.fee,
+            feeBps: data.quote.feeBps,
+            providerID: 'Silverback',
+            poolAddress: data.quote.poolAddress,
+            rawQuote: data.quote, // Store full quote for execution
+          };
+
+          allQuotes.push(silverbackQuote);
+        } else {
+          console.log('⚠️ No Silverback pools available for this pair');
+        }
+      }
+    } catch (sbError) {
+      console.warn('⚠️ Silverback quote fetch failed:', sbError);
+    }
+
+    // 3. Sort all quotes by best output (descending)
+    allQuotes.sort((a, b) => {
+      const outA = Number(a.amountOut);
+      const outB = Number(b.amountOut);
+      return outB - outA; // Descending: best first
+    });
+
+    if (allQuotes.length === 0) {
+      console.log('⚠️ No quotes available from any provider');
       return [];
     }
 
-    console.log(`✅ Received ${quotes.length} anchor quote(s)`);
-
-    // Convert quotes to our format
-    const anchorQuotes: AnchorQuote[] = quotes.map((quoteWrapper) => {
-      const quote = quoteWrapper.quote;
-      const amountInHuman = Number(amount) / Math.pow(10, decimalsFrom);
-      const amountOutHuman = Number(quote.convertedAmount) / Math.pow(10, decimalsTo);
-      const feeHuman = Number(quote.cost.amount) / Math.pow(10, decimalsFrom);
-
-      // Calculate price impact (rough estimate)
-      // For anchors, impact is usually minimal as they provide fixed quotes
-      const priceImpact = 0.1; // Anchors typically have very low impact
-
-      return {
-        from: fromToken,
-        to: toToken,
-        amountIn: amountInHuman.toFixed(6),
-        amountOut: amountOutHuman.toFixed(6),
-        amountOutAtomic: quote.convertedAmount,
-        priceImpact,
-        fee: feeHuman.toFixed(6),
-        providerID: 'anchor', // We can enhance this later with actual provider IDs
-        rawQuote: quoteWrapper,
-      };
-    });
-
-    return anchorQuotes;
+    console.log(`✅ Total quotes available: ${allQuotes.length} (best: ${allQuotes[0].providerID})`);
+    return allQuotes;
   } catch (error) {
-    console.error('❌ Failed to get anchor quotes:', error);
+    console.error('❌ Failed to get quotes:', error);
     return [];
   }
 }
@@ -169,26 +235,79 @@ export async function getAnchorEstimates(
 
 /**
  * Execute anchor swap using a quote
+ * Routes to appropriate backend (FX Anchor SDK or Silverback service)
  */
 export async function executeAnchorSwap(
-  anchorQuote: AnchorQuote
+  anchorQuote: AnchorQuote,
+  userClient?: any,
+  userAddress?: string
 ): Promise<{ success: boolean; exchangeID?: string; error?: string }> {
   try {
-    console.log('🚀 Executing anchor swap...');
+    console.log(`🚀 Executing ${anchorQuote.providerID} swap...`);
 
     if (!anchorQuote.rawQuote) {
       throw new Error('Invalid anchor quote - missing raw quote data');
     }
 
-    // Create exchange using the quote
-    const exchange = await anchorQuote.rawQuote.createExchange();
+    // Route to appropriate backend
+    if (anchorQuote.providerID === 'Silverback') {
+      // Execute via Silverback: TX1 (user signs) + TX2 (backend completes)
+      if (!userClient || !userAddress) {
+        throw new Error('User client and address required for Silverback swaps');
+      }
 
-    console.log('✅ Anchor swap submitted:', exchange.exchange.exchangeID);
+      const quote = anchorQuote.rawQuote;
 
-    return {
-      success: true,
-      exchangeID: exchange.exchange.exchangeID,
-    };
+      console.log('📝 TX1: Sending tokens to pool...');
+
+      // TX1: User sends tokenIn to pool
+      const poolAccount = KeetaNetLib.Account.fromPublicKeyString(quote.poolAddress);
+      const tokenInAccount = KeetaNetLib.Account.fromPublicKeyString(quote.tokenIn);
+
+      const tx1Builder = userClient.initBuilder();
+      tx1Builder.send(poolAccount, BigInt(quote.amountIn), tokenInAccount);
+      await userClient.publishBuilder(tx1Builder);
+
+      console.log('✅ TX1 completed, waiting for finalization...');
+
+      // Wait for finalization
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      console.log('📝 TX2: Requesting backend to send tokens from pool...');
+
+      // TX2: Call backend to complete the swap
+      const response = await fetch('/api/anchor/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quote,
+          userAddress,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Silverback swap TX2 failed');
+      }
+
+      console.log('✅ Silverback swap completed');
+
+      return {
+        success: true,
+        exchangeID: data.poolAddress, // Use pool address as identifier
+      };
+    } else {
+      // Execute via FX Anchor SDK
+      const exchange = await anchorQuote.rawQuote.createExchange();
+
+      console.log('✅ FX Anchor swap submitted:', exchange.exchange.exchangeID);
+
+      return {
+        success: true,
+        exchangeID: exchange.exchange.exchangeID,
+      };
+    }
   } catch (error: any) {
     console.error('❌ Anchor swap failed:', error);
     return {
