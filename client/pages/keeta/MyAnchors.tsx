@@ -7,8 +7,6 @@ import {
   Plus,
   ArrowDownUp,
   Settings,
-  Pause,
-  Play,
   TrendingUp,
 } from "lucide-react";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
@@ -33,7 +31,7 @@ interface AnchorPool {
   token_b: string;
   pair_key: string;
   fee_bps: number;
-  status: 'active' | 'paused' | 'closed';
+  status: 'active' | 'paused' | 'closed'; // 'paused' supported in backend but not shown in UI
   created_at: string;
   volume24h?: string;
   swapCount24h?: number;
@@ -256,42 +254,6 @@ export default function MyAnchors() {
     }
   }
 
-  async function updatePoolStatus(poolAddress: string, status: 'active' | 'paused') {
-    if (!wallet) return;
-
-    setUpdatingPool(poolAddress);
-    try {
-      const response = await fetch(`${API_BASE}/anchor-pools/${poolAddress}/update-status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creatorAddress: wallet.address,
-          status,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast({
-          title: "Pool Updated",
-          description: `Pool ${status === 'active' ? 'activated' : 'paused'}`,
-        });
-
-        await loadMyPools();
-      } else {
-        throw new Error(data.error || "Failed to update pool");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Update Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setUpdatingPool(null);
-    }
-  }
 
   async function updatePoolFee(poolAddress: string, newFeeBps: number) {
     if (!wallet) return;
@@ -586,24 +548,11 @@ export default function MyAnchors() {
                             {symbolA} / {symbolB}
                           </span>
                           <span className={`text-xs px-2 py-1 rounded-full ${
-                            pool.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                            pool.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                           }`}>
                             {pool.status}
                           </span>
                         </div>
-                        <button
-                          onClick={() => updatePoolStatus(pool.pool_address, pool.status === 'active' ? 'paused' : 'active')}
-                          disabled={updatingPool === pool.pool_address}
-                          className="p-2 rounded-lg hover:bg-secondary/60 transition-colors disabled:opacity-50"
-                        >
-                          {updatingPool === pool.pool_address ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : pool.status === 'active' ? (
-                            <Pause className="h-4 w-4" />
-                          ) : (
-                            <Play className="h-4 w-4" />
-                          )}
-                        </button>
                       </div>
 
                       <div className="grid grid-cols-3 gap-3 text-sm">

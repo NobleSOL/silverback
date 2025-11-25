@@ -416,7 +416,9 @@ router.post('/:poolAddress/update-fee', async (req, res) => {
 
 /**
  * POST /api/anchor-pools/:poolAddress/update-status
- * Update anchor pool status (active, paused, closed)
+ * Update anchor pool status (active, paused, or closed)
+ *
+ * Note: 'paused' status is supported in backend but not exposed in frontend UI
  *
  * Body: {
  *   creatorAddress: string,
