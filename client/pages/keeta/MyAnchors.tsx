@@ -122,15 +122,6 @@ export default function MyAnchors() {
         description: "Adding initial liquidity...",
       });
 
-      // Step 2: Add liquidity (user sends tokens to pool)
-      const { createKeetaClientFromSeed } = await import("@/lib/keeta-client");
-      const KeetaNet = await import('@keetanetwork/keetanet-client');
-      const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
-
-      const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(pool.poolAddress);
-      const tokenAAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenA);
-      const tokenBAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenB);
-
       // Get token decimals
       const tokenAInfo = sortedTokens.find(t => t.address === tokenA);
       const tokenBInfo = sortedTokens.find(t => t.address === tokenB);
@@ -141,37 +132,102 @@ export default function MyAnchors() {
       const amountABigInt = BigInt(Math.floor(Number(amountA) * Math.pow(10, decimalsA)));
       const amountBBigInt = BigInt(Math.floor(Number(amountB) * Math.pow(10, decimalsB)));
 
-      // TX1: Send token A to pool
-      const tx1Builder = userClient.initBuilder();
-      tx1Builder.send(poolAccount, amountABigInt, tokenAAccount);
-      await userClient.publishBuilder(tx1Builder);
+      // Step 2: Add liquidity - different flow for Keythings vs seed wallets
+      if (wallet.isKeythings) {
+        // Keythings wallet: Use provider to sign transactions
+        const { getKeythingsProvider } = await import('@/lib/keythings-provider');
+        const KeetaNet = await import('@keetanetwork/keetanet-client');
 
-      // Wait for TX1 to finalize
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        const provider = getKeythingsProvider();
+        if (!provider) {
+          throw new Error('Keythings provider not found');
+        }
 
-      // TX2: Send token B to pool
-      const tx2Builder = userClient.initBuilder();
-      tx2Builder.send(poolAccount, amountBBigInt, tokenBAccount);
-      await userClient.publishBuilder(tx2Builder);
+        console.log('🔐 Requesting user client from Keythings...');
+        const userClient = await provider.getUserClient();
 
-      // Wait for TX2 to finalize
-      await new Promise(resolve => setTimeout(resolve, 2000));
+        const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(pool.poolAddress);
+        const tokenAAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenA);
+        const tokenBAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenB);
 
-      // Step 3: Request backend to mint LP tokens
-      const mintResponse = await fetch(`${API_BASE}/anchor-pools/${pool.poolAddress}/mint-lp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          creatorAddress: wallet.address,
-          amountA: amountABigInt.toString(),
-          amountB: amountBBigInt.toString(),
-        }),
-      });
+        // Build TX: User sends both tokens to pool
+        console.log('📝 Building transaction (user sends tokens to pool)...');
+        const txBuilder = userClient.initBuilder();
 
-      const mintData = await mintResponse.json();
+        // Send tokenA to pool
+        txBuilder.send(poolAccount.publicKeyString, amountABigInt, tokenAAccount);
 
-      if (!mintData.success) {
-        throw new Error(mintData.error || "Failed to mint LP tokens");
+        // Send tokenB to pool
+        txBuilder.send(poolAccount.publicKeyString, amountBBigInt, tokenBAccount);
+
+        // Publish TX (will prompt user via Keythings UI)
+        console.log('✍️ Prompting user to sign transaction via Keythings...');
+        await userClient.publishBuilder(txBuilder);
+
+        console.log('✅ Transaction completed');
+
+        // Call backend to mint LP tokens
+        console.log('📝 Calling backend to mint LP tokens...');
+        const mintResponse = await fetch(`${API_BASE}/anchor-pools/${pool.poolAddress}/mint-lp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creatorAddress: wallet.address,
+            amountA: amountABigInt.toString(),
+            amountB: amountBBigInt.toString(),
+          }),
+        });
+
+        const mintData = await mintResponse.json();
+
+        if (!mintData.success) {
+          throw new Error(mintData.error || "Failed to mint LP tokens");
+        }
+
+        console.log('✅ LP tokens minted');
+
+      } else {
+        // Seed wallet: Use seed to create client
+        const { createKeetaClientFromSeed } = await import("@/lib/keeta-client");
+        const KeetaNet = await import('@keetanetwork/keetanet-client');
+        const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
+
+        const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(pool.poolAddress);
+        const tokenAAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenA);
+        const tokenBAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenB);
+
+        // TX1: Send token A to pool
+        const tx1Builder = userClient.initBuilder();
+        tx1Builder.send(poolAccount, amountABigInt, tokenAAccount);
+        await userClient.publishBuilder(tx1Builder);
+
+        // Wait for TX1 to finalize
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // TX2: Send token B to pool
+        const tx2Builder = userClient.initBuilder();
+        tx2Builder.send(poolAccount, amountBBigInt, tokenBAccount);
+        await userClient.publishBuilder(tx2Builder);
+
+        // Wait for TX2 to finalize
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Request backend to mint LP tokens
+        const mintResponse = await fetch(`${API_BASE}/anchor-pools/${pool.poolAddress}/mint-lp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            creatorAddress: wallet.address,
+            amountA: amountABigInt.toString(),
+            amountB: amountBBigInt.toString(),
+          }),
+        });
+
+        const mintData = await mintResponse.json();
+
+        if (!mintData.success) {
+          throw new Error(mintData.error || "Failed to mint LP tokens");
+        }
       }
 
       toast({
