@@ -43,11 +43,19 @@ export async function initializeDatabase() {
   const pool = getDbPool();
 
   try {
+    // Initialize main schema (AMM pools)
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schema = await fs.readFile(schemaPath, 'utf8');
     await pool.query(schema);
+    console.log('✅ Main database schema initialized');
 
-    console.log('✅ Database schema initialized');
+    // Initialize anchor pools schema
+    const anchorSchemaPath = path.join(__dirname, 'anchor-schema.sql');
+    const anchorSchema = await fs.readFile(anchorSchemaPath, 'utf8');
+    await pool.query(anchorSchema);
+    console.log('✅ Anchor pools schema initialized');
+
+    console.log('✅ Database schema fully initialized');
   } catch (error) {
     console.error('❌ Failed to initialize database:', error);
     throw error;
