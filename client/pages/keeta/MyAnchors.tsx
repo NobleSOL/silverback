@@ -50,6 +50,8 @@ export default function MyAnchors() {
   const [createMode, setCreateMode] = useState(false);
   const [tokenA, setTokenA] = useState<string>("");
   const [tokenB, setTokenB] = useState<string>("");
+  const [amountA, setAmountA] = useState<string>("");
+  const [amountB, setAmountB] = useState<string>("");
   const [feeBps, setFeeBps] = useState(30); // 0.3% default
   const [creatingPool, setCreatingPool] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"tokenA" | "tokenB" | null>(null);
@@ -82,10 +84,11 @@ export default function MyAnchors() {
   }, [wallet]);
 
   async function createAnchorPool() {
-    if (!wallet || !tokenA || !tokenB) return;
+    if (!wallet || !tokenA || !tokenB || !amountA || !amountB) return;
 
     setCreatingPool(true);
     try {
+      // Step 1: Create pool structure
       const response = await fetch(`${API_BASE}/anchor-pools/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,30 +96,94 @@ export default function MyAnchors() {
           creatorAddress: wallet.address,
           tokenA,
           tokenB,
+          amountA,
+          amountB,
           feeBps,
         }),
       });
 
       const data = await response.json();
 
-      if (data.success) {
-        toast({
-          title: "Anchor Pool Created!",
-          description: `Fee: ${(feeBps / 100).toFixed(2)}%`,
-        });
-
-        // Clear form
-        setTokenA("");
-        setTokenB("");
-        setFeeBps(30);
-        setCreateMode(false);
-
-        // Reload pools
-        await loadMyPools();
-      } else {
+      if (!data.success) {
         throw new Error(data.error || "Failed to create anchor pool");
       }
+
+      const { pool } = data;
+
+      toast({
+        title: "Pool Created",
+        description: "Adding initial liquidity...",
+      });
+
+      // Step 2: Add liquidity (user sends tokens to pool)
+      const { createKeetaClientFromSeed } = await import("@/lib/keeta-client");
+      const { lib } = await import("@keetanetwork/anchor");
+      const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
+
+      const poolAccount = lib.Account.fromPublicKeyString(pool.poolAddress);
+      const tokenAAccount = lib.Account.fromPublicKeyString(tokenA);
+      const tokenBAccount = lib.Account.fromPublicKeyString(tokenB);
+
+      // Get token decimals
+      const tokenAInfo = sortedTokens.find(t => t.address === tokenA);
+      const tokenBInfo = sortedTokens.find(t => t.address === tokenB);
+      const decimalsA = tokenAInfo?.decimals || 9;
+      const decimalsB = tokenBInfo?.decimals || 9;
+
+      // Convert amounts to atomic units
+      const amountABigInt = BigInt(Math.floor(Number(amountA) * Math.pow(10, decimalsA)));
+      const amountBBigInt = BigInt(Math.floor(Number(amountB) * Math.pow(10, decimalsB)));
+
+      // TX1: Send token A to pool
+      const tx1Builder = userClient.initBuilder();
+      tx1Builder.send(poolAccount, amountABigInt, tokenAAccount);
+      await userClient.publishBuilder(tx1Builder);
+
+      // Wait for TX1 to finalize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // TX2: Send token B to pool
+      const tx2Builder = userClient.initBuilder();
+      tx2Builder.send(poolAccount, amountBBigInt, tokenBAccount);
+      await userClient.publishBuilder(tx2Builder);
+
+      // Wait for TX2 to finalize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Step 3: Request backend to mint LP tokens
+      const mintResponse = await fetch(`${API_BASE}/anchor-pools/${pool.poolAddress}/mint-lp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatorAddress: wallet.address,
+          amountA: amountABigInt.toString(),
+          amountB: amountBBigInt.toString(),
+        }),
+      });
+
+      const mintData = await mintResponse.json();
+
+      if (!mintData.success) {
+        throw new Error(mintData.error || "Failed to mint LP tokens");
+      }
+
+      toast({
+        title: "Anchor Pool Created!",
+        description: `${pool.symbolA}/${pool.symbolB} - Fee: ${(feeBps / 100).toFixed(2)}%`,
+      });
+
+      // Clear form
+      setTokenA("");
+      setTokenB("");
+      setAmountA("");
+      setAmountB("");
+      setFeeBps(30);
+      setCreateMode(false);
+
+      // Reload pools
+      await loadMyPools();
     } catch (error: any) {
+      console.error("Pool creation error:", error);
       toast({
         title: "Creation Failed",
         description: error.message,
@@ -310,23 +377,40 @@ export default function MyAnchors() {
             <div className="space-y-4">
               {/* Token A */}
               <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
-                <div className="mb-2 text-xs text-muted-foreground">Token A</div>
-                <button
-                  type="button"
-                  onClick={() => setSelectingToken("tokenA")}
-                  className="w-full rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
-                >
+                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Token A</span>
                   {tokenA && (() => {
                     const token = sortedTokens.find(t => t.address === tokenA);
-                    return token ? (
-                      <>
-                        <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} />
-                        <span className="text-sm font-semibold">{token.symbol}</span>
-                      </>
-                    ) : null;
+                    return token ? <span>Bal: {token.balanceFormatted}</span> : null;
                   })()}
-                  {!tokenA && <span className="text-sm text-muted-foreground">Select Token A</span>}
-                </button>
+                </div>
+                <div className="flex items-center gap-3 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectingToken("tokenA")}
+                    className="min-w-24 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                  >
+                    {tokenA && (() => {
+                      const token = sortedTokens.find(t => t.address === tokenA);
+                      return token ? (
+                        <>
+                          <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} />
+                          <span className="text-sm font-semibold">{token.symbol}</span>
+                        </>
+                      ) : null;
+                    })()}
+                    {!tokenA && <span className="text-sm text-muted-foreground">Select</span>}
+                  </button>
+                  <input
+                    inputMode="decimal"
+                    pattern="^[0-9]*[.,]?[0-9]*$"
+                    placeholder="0.00"
+                    disabled={!tokenA}
+                    value={amountA}
+                    onChange={(e) => setAmountA(e.target.value.replace(",", "."))}
+                    className="ml-auto flex-1 min-w-0 bg-transparent text-right text-xl font-semibold outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+                  />
+                </div>
               </div>
 
               {/* Swap Arrow */}
@@ -338,24 +422,41 @@ export default function MyAnchors() {
 
               {/* Token B */}
               <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
-                <div className="mb-2 text-xs text-muted-foreground">Token B</div>
-                <button
-                  type="button"
-                  onClick={() => setSelectingToken("tokenB")}
-                  disabled={!tokenA}
-                  className="w-full rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Token B</span>
                   {tokenB && (() => {
                     const token = sortedTokens.find(t => t.address === tokenB);
-                    return token ? (
-                      <>
-                        <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} />
-                        <span className="text-sm font-semibold">{token.symbol}</span>
-                      </>
-                    ) : null;
+                    return token ? <span>Bal: {token.balanceFormatted}</span> : null;
                   })()}
-                  {!tokenB && <span className="text-sm text-muted-foreground">Select Token B</span>}
-                </button>
+                </div>
+                <div className="flex items-center gap-3 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectingToken("tokenB")}
+                    disabled={!tokenA}
+                    className="min-w-24 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {tokenB && (() => {
+                      const token = sortedTokens.find(t => t.address === tokenB);
+                      return token ? (
+                        <>
+                          <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} />
+                          <span className="text-sm font-semibold">{token.symbol}</span>
+                        </>
+                      ) : null;
+                    })()}
+                    {!tokenB && <span className="text-sm text-muted-foreground">Select</span>}
+                  </button>
+                  <input
+                    inputMode="decimal"
+                    pattern="^[0-9]*[.,]?[0-9]*$"
+                    placeholder="0.00"
+                    disabled={!tokenB}
+                    value={amountB}
+                    onChange={(e) => setAmountB(e.target.value.replace(",", "."))}
+                    className="ml-auto flex-1 min-w-0 bg-transparent text-right text-xl font-semibold outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+                  />
+                </div>
               </div>
 
               {/* Fee Setting */}
@@ -382,7 +483,7 @@ export default function MyAnchors() {
 
               <Button
                 onClick={createAnchorPool}
-                disabled={creatingPool || !tokenA || !tokenB}
+                disabled={creatingPool || !tokenA || !tokenB || !amountA || !amountB || Number(amountA) <= 0 || Number(amountB) <= 0}
                 className="w-full h-12 text-base font-semibold"
               >
                 {creatingPool ? (

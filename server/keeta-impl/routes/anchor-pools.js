@@ -112,12 +112,20 @@ router.get('/:tokenA/:tokenB', async (req, res) => {
  */
 router.post('/create', async (req, res) => {
   try {
-    const { creatorAddress, tokenA, tokenB, feeBps = 30 } = req.body;
+    const { creatorAddress, tokenA, tokenB, amountA, amountB, feeBps = 30 } = req.body;
 
-    if (!creatorAddress || !tokenA || !tokenB) {
+    if (!creatorAddress || !tokenA || !tokenB || !amountA || !amountB) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: creatorAddress, tokenA, tokenB',
+        error: 'Missing required fields: creatorAddress, tokenA, tokenB, amountA, amountB',
+      });
+    }
+
+    // Validate amounts
+    if (Number(amountA) <= 0 || Number(amountB) <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amounts must be greater than 0',
       });
     }
 
@@ -197,6 +205,8 @@ router.post('/create', async (req, res) => {
         creatorAddress,
         tokenA,
         tokenB,
+        amountA,
+        amountB,
         feeBps,
         symbolA,
         symbolB,
@@ -210,6 +220,94 @@ router.post('/create', async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/anchor-pools/:poolAddress/mint-lp
+ * Mint LP tokens after initial liquidity is added
+ * (Anchor pool version - separate from regular AMM pools)
+ *
+ * Body: {
+ *   creatorAddress: string,
+ *   amountA: string,
+ *   amountB: string
+ * }
+ */
+router.post('/:poolAddress/mint-lp', async (req, res) => {
+  try {
+    const { poolAddress } = req.params;
+    const { creatorAddress, amountA, amountB } = req.body;
+
+    if (!creatorAddress || !amountA || !amountB) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: creatorAddress, amountA, amountB',
+      });
+    }
+
+    const repository = getAnchorRepository();
+    const pool = await repository.getAnchorPoolByAddress(poolAddress);
+
+    if (!pool) {
+      return res.status(404).json({
+        success: false,
+        error: 'Anchor pool not found',
+      });
+    }
+
+    // Verify creator ownership
+    if (pool.creator_address !== creatorAddress) {
+      return res.status(403).json({
+        success: false,
+        error: 'Only pool creator can mint initial LP tokens',
+      });
+    }
+
+    // Calculate LP tokens to mint (geometric mean: sqrt(amountA * amountB))
+    const amountABigInt = BigInt(amountA);
+    const amountBBigInt = BigInt(amountB);
+    const lpTokenAmount = sqrt(amountABigInt * amountBBigInt);
+
+    console.log(`💎 Minting ${lpTokenAmount} LP tokens for anchor pool ${poolAddress.slice(-8)}...`);
+
+    // Mint LP tokens to creator
+    const { mintLPTokens } = await import('../utils/client.js');
+    await mintLPTokens(pool.lp_token_address, creatorAddress, lpTokenAmount);
+
+    console.log(`✅ LP tokens minted successfully`);
+
+    res.json({
+      success: true,
+      message: 'LP tokens minted successfully',
+      lpTokenAmount: lpTokenAmount.toString(),
+    });
+  } catch (error) {
+    console.error('Mint LP tokens error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// Helper: Integer square root for LP token calculation
+function sqrt(value) {
+  if (value < 0n) {
+    throw new Error('Square root of negative numbers is not supported');
+  }
+  if (value < 2n) {
+    return value;
+  }
+
+  function newtonIteration(n, x0) {
+    const x1 = ((n / x0) + x0) >> 1n;
+    if (x0 === x1 || x0 === (x1 - 1n)) {
+      return x0;
+    }
+    return newtonIteration(n, x1);
+  }
+
+  return newtonIteration(value, 1n);
+}
 
 /**
  * POST /api/anchor-pools/:poolAddress/update-fee
