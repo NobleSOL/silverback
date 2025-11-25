@@ -106,9 +106,11 @@ export async function initializeDatabase() {
         END;
         $$ language 'plpgsql';
 
+        DROP TRIGGER IF EXISTS update_pools_updated_at ON pools;
         CREATE TRIGGER update_pools_updated_at BEFORE UPDATE ON pools
           FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+        DROP TRIGGER IF EXISTS update_lp_positions_updated_at ON lp_positions;
         CREATE TRIGGER update_lp_positions_updated_at BEFORE UPDATE ON lp_positions
           FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
       `;
