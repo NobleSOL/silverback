@@ -14,6 +14,15 @@ import QuickFill from "@/components/shared/QuickFill";
 import TokenLogo from "@/components/shared/TokenLogo";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 
+// KTA logo URL (using Keeta logo)
+const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+
+// Helper to get token logo
+const getTokenLogo = (symbol: string, defaultUrl?: string) => {
+  if (symbol === "KTA") return KTA_LOGO;
+  return defaultUrl;
+};
+
 export default function KeetaAnchor() {
   const { wallet, sortedTokens, tokenPrices, connectKeythingsWallet, loading } = useKeetaWallet();
 
@@ -191,7 +200,7 @@ export default function KeetaAnchor() {
                 </div>
 
                 {/* From Token Input */}
-                <div className="glass-card rounded-xl p-4">
+                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You pay</span>
                     {tokenFrom && fromTokenInfo && (
@@ -206,7 +215,7 @@ export default function KeetaAnchor() {
                       onClick={() => setSelectingToken("from")}
                       className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
                     >
-                      {fromTokenInfo && <TokenLogo src={fromTokenInfo.logoUrl} alt={fromTokenInfo.symbol} size={20} />}
+                      {fromTokenInfo && <TokenLogo src={getTokenLogo(fromTokenInfo.symbol, fromTokenInfo.logoUrl)} alt={fromTokenInfo.symbol} size={20} />}
                       <span className="text-sm font-semibold">
                         {fromTokenInfo ? fromTokenInfo.symbol : "Select"}
                       </span>
@@ -240,7 +249,7 @@ export default function KeetaAnchor() {
                 </div>
 
                 {/* To Token Input */}
-                <div className="glass-card rounded-xl p-4">
+                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You receive</span>
                     {tokenTo && toTokenInfo && (
@@ -256,7 +265,7 @@ export default function KeetaAnchor() {
                       disabled={!tokenFrom}
                       className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {toTokenInfo && <TokenLogo src={toTokenInfo.logoUrl} alt={toTokenInfo.symbol} size={20} />}
+                      {toTokenInfo && <TokenLogo src={getTokenLogo(toTokenInfo.symbol, toTokenInfo.logoUrl)} alt={toTokenInfo.symbol} size={20} />}
                       <span className="text-sm font-semibold">
                         {toTokenInfo ? toTokenInfo.symbol : "Select"}
                       </span>

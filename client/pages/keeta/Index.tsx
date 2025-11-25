@@ -21,6 +21,15 @@ import TrendingPills from "@/components/shared/TrendingPills";
 import TokenLogo from "@/components/shared/TokenLogo";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
+
+// KTA logo URL (using Keeta logo)
+const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+
+// Helper to get token logo
+const getTokenLogo = (symbol: string, defaultUrl?: string) => {
+  if (symbol === "KTA") return KTA_LOGO;
+  return defaultUrl;
+};
 import {
   getSwapQuote as getSwapQuoteClient,
   executeSwap as executeSwapClient,
@@ -394,7 +403,7 @@ export default function KeetaIndex() {
                 </div>
 
                 {/* From Token Input */}
-                <div className="glass-card rounded-xl p-4">
+                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You pay</span>
                     {swapTokenIn && wallet && (
@@ -411,7 +420,7 @@ export default function KeetaIndex() {
                     >
                       {swapTokenIn && (() => {
                         const token = wallet?.tokens.find(t => t.address === swapTokenIn);
-                        return token ? <TokenLogo src={token.logoUrl} alt={token.symbol} size={20} /> : null;
+                        return token ? <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} /> : null;
                       })()}
                       <span className="text-sm font-semibold">
                         {swapTokenIn ? (wallet?.tokens.find(t => t.address === swapTokenIn)?.symbol || "Select") : "Select"}
@@ -445,7 +454,7 @@ export default function KeetaIndex() {
                 </div>
 
                 {/* To Token Input */}
-                <div className="glass-card rounded-xl p-4">
+                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You receive</span>
                     {selectedPoolForSwap && wallet && (() => {
@@ -473,7 +482,7 @@ export default function KeetaIndex() {
                         const tokenOut = pool.tokenA === swapTokenIn ? pool.tokenB : pool.tokenA;
                         const tokenOutSymbol = pool.tokenA === swapTokenIn ? pool.symbolB : pool.symbolA;
                         const token = wallet?.tokens.find(t => t.address === tokenOut);
-                        return token ? <TokenLogo src={token.logoUrl} alt={tokenOutSymbol} size={20} /> : null;
+                        return token ? <TokenLogo src={getTokenLogo(tokenOutSymbol, token.logoUrl)} alt={tokenOutSymbol} size={20} /> : null;
                       })()}
                       <span className="text-sm font-semibold">
                         {selectedPoolForSwap ? (() => {

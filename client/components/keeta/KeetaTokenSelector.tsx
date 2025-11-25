@@ -10,6 +10,9 @@ export interface KeetaToken {
   logoUrl?: string;
 }
 
+// KTA logo URL (using Keeta logo)
+const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+
 export default function KeetaTokenSelector({
   open,
   onClose,
@@ -24,6 +27,12 @@ export default function KeetaTokenSelector({
   excludeAddress?: string;
 }) {
   const [query, setQuery] = useState("");
+
+  // Helper to get token logo (use Keeta logo for KTA)
+  const getTokenLogo = (token: KeetaToken) => {
+    if (token.symbol === "KTA") return KTA_LOGO;
+    return token.logoUrl;
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -101,7 +110,7 @@ export default function KeetaTokenSelector({
                 className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-secondary/50"
               >
                 <div className="flex items-center gap-2">
-                  <TokenLogo src={t.logoUrl} alt={t.symbol} size={24} />
+                  <TokenLogo src={getTokenLogo(t)} alt={t.symbol} size={24} />
                   <div>
                     <div className="font-medium">{t.symbol}</div>
                     <div className="text-xs text-muted-foreground">
@@ -134,7 +143,7 @@ export default function KeetaTokenSelector({
                 className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-secondary/50"
               >
                 <div className="flex items-center gap-2">
-                  <TokenLogo src={t.logoUrl} alt={t.symbol} size={24} />
+                  <TokenLogo src={getTokenLogo(t)} alt={t.symbol} size={24} />
                   <div>
                     <div className="font-medium">{t.symbol}</div>
                     <div className="text-xs text-muted-foreground">
