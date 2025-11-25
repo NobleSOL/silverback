@@ -174,15 +174,20 @@ router.post('/complete', async (req, res) => {
 
     // TX2: Mint LP tokens to user
     console.log('📝 TX2: Minting LP tokens to user...');
+    console.log(`   Pool instance lpTokenAddress: ${pool.lpTokenAddress || 'NOT SET'}`);
 
     // Ensure LP token address is available
     if (!pool.lpTokenAddress) {
       console.log('⚠️ LP token address not set on pool, looking up from database...');
       // Look up LP token from database
       const poolData = await poolManager.repository.getPoolByAddress(poolAddress);
+      console.log(`   Database query returned:`, poolData ? `pool found` : `NULL`);
       if (poolData && poolData.lp_token_address) {
         pool.lpTokenAddress = poolData.lp_token_address;
         console.log(`   Found LP token in database: ${pool.lpTokenAddress}`);
+      } else if (poolData) {
+        console.error(`   ❌ Pool exists in database but lp_token_address is NULL!`);
+        console.error(`   Pool data:`, JSON.stringify(poolData, null, 2));
       }
 
       if (!pool.lpTokenAddress) {
@@ -190,12 +195,22 @@ router.post('/complete', async (req, res) => {
       }
     }
 
+    console.log(`   Calling mintLPTokens with:`);
+    console.log(`     - LP Token: ${pool.lpTokenAddress}`);
+    console.log(`     - Recipient: ${userAddress}`);
+    console.log(`     - Amount: ${liquidity}`);
+
     // Use the mintLPTokens helper which:
     // 1. modifyTokenSupply() to create new tokens
     // 2. send() to transfer them to the user
-    await mintLPTokens(pool.lpTokenAddress, userAddress, liquidity);
-
-    console.log(`✅ TX2 completed: ${liquidity} LP tokens minted to user`);
+    try {
+      await mintLPTokens(pool.lpTokenAddress, userAddress, liquidity);
+      console.log(`✅ TX2 completed: ${liquidity} LP tokens minted to user`);
+    } catch (mintError) {
+      console.error(`❌ mintLPTokens FAILED:`, mintError.message);
+      console.error(`   Stack:`, mintError.stack);
+      throw mintError;
+    }
 
     // Update pool reserves and total supply
     pool.reserveA = reserveA + amountABigInt;

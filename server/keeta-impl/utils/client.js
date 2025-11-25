@@ -521,14 +521,25 @@ export async function mintLPTokens(lpTokenAddress, recipientAddress, amount) {
   const client = await getOpsClient();
 
   console.log(`🪙 Minting ${amount} LP tokens to ${recipientAddress.slice(0, 20)}...`);
+  console.log(`   LP Token Address: ${lpTokenAddress}`);
+  console.log(`   Recipient Address: ${recipientAddress}`);
+  console.log(`   Amount: ${amount}`);
 
   const lpTokenAccount = accountFromAddress(lpTokenAddress);
   const recipientAccount = accountFromAddress(recipientAddress);
 
   // Step 1: Mint tokens (they go to LP token account's own balance)
+  console.log(`   [TX1/2] Calling modifyTokenSupply to mint ${amount} tokens...`);
   const builder1 = client.initBuilder();
   builder1.modifyTokenSupply(amount, { account: lpTokenAccount });
-  await client.publishBuilder(builder1);
+
+  try {
+    await client.publishBuilder(builder1);
+    console.log(`   ✅ [TX1/2] modifyTokenSupply succeeded`);
+  } catch (error) {
+    console.error(`   ❌ [TX1/2] modifyTokenSupply FAILED:`, error.message);
+    throw new Error(`Failed to mint LP tokens (modifyTokenSupply): ${error.message}`);
+  }
 
   console.log(`🔄 Tokens minted in LP token account, transferring to recipient...`);
 
@@ -537,6 +548,7 @@ export async function mintLPTokens(lpTokenAddress, recipientAddress, amount) {
 
   // Step 2: Send FROM LP token account TO recipient
   // Using { account: lpTokenAccount } to specify sending FROM the token account
+  console.log(`   [TX2/2] Sending ${amount} LP tokens from LP token account to recipient...`);
   const builder2 = client.initBuilder();
   builder2.send(
     recipientAccount,              // TO: recipient wallet
@@ -545,7 +557,14 @@ export async function mintLPTokens(lpTokenAddress, recipientAddress, amount) {
     undefined,                     // no external ref
     { account: lpTokenAccount }    // FROM: LP token account
   );
-  await client.publishBuilder(builder2);
+
+  try {
+    await client.publishBuilder(builder2);
+    console.log(`   ✅ [TX2/2] send succeeded`);
+  } catch (error) {
+    console.error(`   ❌ [TX2/2] send FAILED:`, error.message);
+    throw new Error(`Failed to send minted LP tokens to recipient: ${error.message}`);
+  }
 
   console.log(`✅ Minted ${amount} LP tokens to ${recipientAddress.slice(0, 20)}...`);
 }

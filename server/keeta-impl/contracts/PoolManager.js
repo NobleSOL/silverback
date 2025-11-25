@@ -359,9 +359,9 @@ export class PoolManager {
     console.log(`   ✅ LP token created: ${lpTokenAddress}`);
 
     // Create and initialize pool instance with LP token
-    const pool = new Pool(poolAddress, tokenA, tokenB, null, this.repository);
+    // Constructor params: (poolAddress, tokenA, tokenB, lpTokenAddress, opsClient, repository)
+    const pool = new Pool(poolAddress, tokenA, tokenB, lpTokenAddress, null, this.repository);
     pool.creator = creatorAddress; // Track who created the pool
-    pool.lpTokenAddress = lpTokenAddress; // Store LP token address
     await pool.initialize();
 
     // Register pool
