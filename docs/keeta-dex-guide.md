@@ -10,8 +10,9 @@
 4. [Creating Tokens on Keeta](#creating-tokens)
 5. [Creating Liquidity Pairs & LP Tokens](#creating-lp-tokens)
 6. [DEX Implementation](#dex-implementation)
-7. [Testnet Resources](#testnet-resources)
-8. [Key Considerations](#considerations)
+7. [User-Created Anchor Pools](#anchor-pools)
+8. [Testnet Resources](#testnet-resources)
+9. [Key Considerations](#considerations)
 
 ---
 
@@ -569,6 +570,304 @@ class KeetaDEXRouter {
   }
 }
 ```
+
+---
+
+## User-Created Anchor Pools {#anchor-pools}
+
+### Overview
+
+Silverback DEX supports **user-created anchor pools** - liquidity pools that function as FX anchors with customizable fees. This enables:
+
+- **Fee Competition**: Multiple users can create anchor pools for the same token pair with different fees
+- **Quote Aggregation**: The platform queries all pools (official FX anchors + user pools) and displays the best rate
+- **Passive Income**: Pool creators earn fees from swaps routed through their pools
+
+### Architecture
+
+User anchor pools are **completely separate** from regular AMM pools:
+
+**Database Tables:**
+- `anchor_pools` - Pool metadata and configuration
+- `anchor_pool_snapshots` - Historical reserve data
+- `anchor_swaps` - Swap transaction history
+
+**API Endpoints:**
+- `POST /api/anchor-pools/create` - Create new anchor pool
+- `POST /api/anchor-pools/:poolAddress/mint-lp` - Mint LP tokens after liquidity addition
+- `GET /api/anchor-pools` - Get all active anchor pools
+- `POST /api/anchor/quote` - Get quote from Silverback pools
+- `POST /api/anchor/swap` - Execute swap through Silverback pool
+
+**UI Pages:**
+- `/keeta/anchor` - Anchor trading aggregator (queries FX + Silverback)
+- `/keeta/my-anchors` - Create and manage user anchor pools
+
+### Creating an Anchor Pool (3-Step Process)
+
+```javascript
+// Step 1: Create pool structure (backend creates storage account + LP token)
+async function createAnchorPool(creatorAddress, tokenA, tokenB, amountA, amountB, feeBps = 30) {
+  const response = await fetch('/api/anchor-pools/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      creatorAddress,
+      tokenA,
+      tokenB,
+      amountA,
+      amountB,
+      feeBps // 1-1000 bps (0.01% to 10%)
+    })
+  });
+
+  const { pool } = await response.json();
+  return pool; // { poolAddress, lpTokenAddress, ... }
+}
+
+// Step 2: User sends tokens to pool (TX1 + TX2)
+async function addInitialLiquidity(userClient, pool, amountA, amountB) {
+  const poolAccount = KeetaNetLib.Account.fromPublicKeyString(pool.poolAddress);
+  const tokenAAccount = KeetaNetLib.Account.fromPublicKeyString(pool.tokenA);
+  const tokenBAccount = KeetaNetLib.Account.fromPublicKeyString(pool.tokenB);
+
+  // TX1: Send tokenA to pool
+  const tx1Builder = userClient.initBuilder();
+  tx1Builder.send(poolAccount, amountA, tokenAAccount);
+  await userClient.publishBuilder(tx1Builder);
+
+  // TX2: Send tokenB to pool
+  const tx2Builder = userClient.initBuilder();
+  tx2Builder.send(poolAccount, amountB, tokenBAccount);
+  await userClient.publishBuilder(tx2Builder);
+
+  console.log('Tokens sent to pool');
+}
+
+// Step 3: Backend mints LP tokens to creator
+async function mintLPTokens(poolAddress, creatorAddress, amountA, amountB) {
+  // Wait for transactions to finalize
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
+  const response = await fetch(`/api/anchor-pools/${poolAddress}/mint-lp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      creatorAddress,
+      amountA: amountA.toString(),
+      amountB: amountB.toString()
+    })
+  });
+
+  const { lpTokenAmount } = await response.json();
+  console.log(`LP tokens minted: ${lpTokenAmount}`);
+  return lpTokenAmount;
+}
+```
+
+### LP Token Calculation
+
+Anchor pools use the **geometric mean** formula for initial liquidity:
+
+```javascript
+// Integer square root using Newton's method
+function sqrt(value) {
+  if (value < 0n) throw new Error('Square root of negative numbers is not supported');
+  if (value < 2n) return value;
+
+  function newtonIteration(n, x0) {
+    const x1 = ((n / x0) + x0) >> 1n;
+    if (x0 === x1 || x0 === (x1 - 1n)) return x0;
+    return newtonIteration(n, x1);
+  }
+
+  return newtonIteration(value, 1n);
+}
+
+// Calculate LP tokens
+const amountABigInt = BigInt(amountA);
+const amountBBigInt = BigInt(amountB);
+const lpTokenAmount = sqrt(amountABigInt * amountBBigInt);
+```
+
+### Quote Aggregation
+
+The anchor trading page aggregates quotes from multiple sources:
+
+```javascript
+async function getAnchorQuotes(userClient, fromToken, toToken, amount, decimalsFrom, decimalsTo) {
+  const allQuotes = [];
+
+  // 1. Fetch FX Anchor quotes (official anchors)
+  try {
+    const fxClient = new FX.Client(userClient);
+    const quotes = await fxClient.getQuotes({
+      from: KeetaNetLib.Account.fromPublicKeyString(fromToken),
+      to: KeetaNetLib.Account.fromPublicKeyString(toToken),
+      amount: amount,
+      affinity: 'from'
+    });
+
+    const fxQuotes = quotes.map(q => ({
+      amountOut: q.quote.convertedAmount,
+      providerID: 'FX Anchor',
+      fee: q.quote.cost.amount,
+      rawQuote: q
+    }));
+
+    allQuotes.push(...fxQuotes);
+  } catch (error) {
+    console.warn('FX Anchor fetch failed:', error);
+  }
+
+  // 2. Fetch Silverback pool quotes (user-created pools)
+  try {
+    const response = await fetch('/api/anchor/quote', {
+      method: 'POST',
+      body: JSON.stringify({
+        tokenIn: fromToken,
+        tokenOut: toToken,
+        amountIn: amount.toString(),
+        decimalsIn: decimalsFrom,
+        decimalsOut: decimalsTo
+      })
+    });
+
+    const { quote } = await response.json();
+    if (quote) {
+      allQuotes.push({
+        amountOut: BigInt(quote.amountOut),
+        providerID: 'Silverback',
+        poolAddress: quote.poolAddress,
+        feeBps: quote.feeBps,
+        rawQuote: quote
+      });
+    }
+  } catch (error) {
+    console.warn('Silverback quote fetch failed:', error);
+  }
+
+  // 3. Sort by best output (descending)
+  allQuotes.sort((a, b) => Number(b.amountOut - a.amountOut));
+
+  return allQuotes; // Best quote is allQuotes[0]
+}
+```
+
+### Swap Execution (Two-Transaction Flow)
+
+Silverback anchor swaps require two transactions:
+
+```javascript
+async function executeAnchorSwap(anchorQuote, userClient, userAddress) {
+  if (anchorQuote.providerID === 'Silverback') {
+    const quote = anchorQuote.rawQuote;
+
+    // TX1: User sends tokenIn to pool (user signs)
+    const poolAccount = KeetaNetLib.Account.fromPublicKeyString(quote.poolAddress);
+    const tokenInAccount = KeetaNetLib.Account.fromPublicKeyString(quote.tokenIn);
+
+    const tx1Builder = userClient.initBuilder();
+    tx1Builder.send(poolAccount, BigInt(quote.amountIn), tokenInAccount);
+    await userClient.publishBuilder(tx1Builder);
+
+    console.log('TX1 completed, waiting for finalization...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // TX2: Backend sends tokenOut from pool to user (OPS wallet signs)
+    const response = await fetch('/api/anchor/swap', {
+      method: 'POST',
+      body: JSON.stringify({ quote, userAddress })
+    });
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error);
+
+    console.log('Swap completed');
+    return { success: true, exchangeID: quote.poolAddress };
+  } else {
+    // FX Anchor SDK execution
+    const exchange = await anchorQuote.rawQuote.createExchange();
+    return { success: true, exchangeID: exchange.exchange.exchangeID };
+  }
+}
+```
+
+### Fee Management
+
+Pool creators can update fees dynamically:
+
+```javascript
+// Update anchor pool fee (requires creator ownership)
+async function updateAnchorPoolFee(poolAddress, creatorAddress, newFeeBps) {
+  // Validate fee (1-1000 bps = 0.01% to 10%)
+  if (newFeeBps < 1 || newFeeBps > 1000) {
+    throw new Error('Fee must be between 1 and 1000 basis points');
+  }
+
+  const response = await fetch(`/api/anchor-pools/${poolAddress}/update-fee`, {
+    method: 'POST',
+    body: JSON.stringify({ creatorAddress, feeBps: newFeeBps })
+  });
+
+  return response.json();
+}
+```
+
+### Pool Status Management
+
+Creators can pause or close pools:
+
+```javascript
+// Update pool status
+async function updatePoolStatus(poolAddress, creatorAddress, status) {
+  // status: 'active' | 'paused' | 'closed'
+  const response = await fetch(`/api/anchor-pools/${poolAddress}/update-status`, {
+    method: 'POST',
+    body: JSON.stringify({ creatorAddress, status })
+  });
+
+  return response.json();
+}
+```
+
+### Analytics
+
+Track pool performance with built-in analytics:
+
+```javascript
+// Get 24h volume for anchor pool
+async function get24hVolume(poolAddress) {
+  const response = await fetch(`/api/anchor-pools/${poolAddress}/volume`);
+  const data = await response.json();
+
+  return {
+    volume24h: data.volume24h,
+    swapCount: data.swapCount,
+    feesCollected: data.feesCollected
+  };
+}
+
+// Get swap history
+async function getSwapHistory(poolAddress, limit = 100) {
+  const response = await fetch(`/api/anchor-pools/${poolAddress}/swaps?limit=${limit}`);
+  const data = await response.json();
+
+  return data.swaps;
+}
+```
+
+### Key Differences: Anchor Pools vs AMM Pools
+
+| Feature | Anchor Pools | AMM Pools |
+|---------|-------------|-----------|
+| **Purpose** | FX anchor liquidity + aggregation | Traditional AMM swaps |
+| **Fee Range** | 1-1000 bps (0.01% - 10%) | Fixed 30 bps (0.3%) |
+| **Quote Aggregation** | Merged with FX anchors | Pool-specific quotes |
+| **Database** | `anchor_pools` table | `pools` table |
+| **API** | `/api/anchor/*` and `/api/anchor-pools/*` | `/api/pools/*` |
+| **UI** | My Anchors + Anchor pages | Pool + Swap pages |
+| **Storage Type** | `SILVERBACK_ANCHOR` | `SILVERBACK_POOL` |
 
 ---
 

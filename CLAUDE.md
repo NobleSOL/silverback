@@ -94,8 +94,9 @@ client/
 │   └── Portfolio.tsx   # Classic + Concentrated positions (Base)
 ├── pages/keeta/        # Keeta DEX pages
 │   ├── Index.tsx       # Pool-based swap (Keeta)
-│   ├── Pool.tsx        # Create/manage pools (Keeta)
-│   └── Anchor.tsx      # FX Anchor trading aggregator (Keeta)
+│   ├── Pool.tsx        # Create/manage AMM pools (Keeta)
+│   ├── Anchor.tsx      # FX Anchor trading aggregator (Keeta)
+│   └── MyAnchors.tsx   # User-created anchor pool management (Keeta)
 ├── components/
 │   ├── swap/           # Swap-specific components
 │   ├── shared/         # Reusable components (slippage, token selector, QuickFill)
@@ -140,13 +141,19 @@ server/
 ├── index.ts                # Express setup and route registration
 ├── keeta-impl/
 │   ├── routes/
-│   │   ├── pools.js        # Pool creation, liquidity, swap
+│   │   ├── pools.js        # AMM pool creation, liquidity, swap
+│   │   ├── anchor-pools.js # User anchor pool CRUD operations
+│   │   ├── anchor.js       # Silverback anchor quote/swap execution
 │   │   ├── pricing.js      # Token price data
 │   │   └── transfer.js     # Token transfers
+│   ├── services/
+│   │   └── anchor-service.js # Silverback anchor pool quote aggregation
+│   ├── db/
+│   │   ├── anchor-schema.sql      # Anchor pools database schema
+│   │   └── anchor-repository.js   # Anchor pool data access layer
 │   └── utils/
 │       ├── client.js       # Keeta client utilities
-│       ├── constants.js    # Network constants
-│       └── anchor.js       # FX Anchor placeholders (future)
+│       └── constants.js    # Network constants
 └── routes/                 # Additional API handlers
 ```
 
@@ -203,10 +210,12 @@ Frontend deployable to Netlify (config in `netlify.toml`).
 
 ### Keeta DEX (Keeta Blockchain)
 - **Swap Page**: Pool-based AMM swaps (Uniswap V2 style)
-- **Pool Page**: Create pools, add/remove liquidity
-- **Anchor Page**: FX Anchor trading aggregator (queries ALL anchor providers)
+- **Pool Page**: Create/manage AMM pools, add/remove liquidity
+- **Anchor Page**: FX Anchor trading aggregator (queries official FX anchors + Silverback pools)
+- **My Anchors Page**: Create and manage user-owned anchor pools with custom fees
 - **Wallet**: Keythings browser extension (localhost:3000 required)
-- **Backend**: Express APIs for pool creation, swaps, transfers
+- **Backend**: Express APIs for pools, anchors, swaps, transfers
+- **Database**: PostgreSQL for pool/anchor metadata, transactions, volume tracking
 
 ## FX Anchor Integration
 

@@ -166,12 +166,188 @@ function getPriceImpact(amountIn, reserveIn, reserveOut) {
 
 ---
 
-## Liquidity Pool Formulas
+## Anchor Pool Operations
 
-### Initial Liquidity
+### Create Anchor Pool (3-Step Process)
 
 ```javascript
-// For first LP
+// Step 1: Create pool structure
+const response = await fetch('/api/anchor-pools/create', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creatorAddress: 'keeta_...',
+    tokenA: 'keeta_token_a',
+    tokenB: 'keeta_token_b',
+    amountA: '1000000000', // bigint as string
+    amountB: '2000000000',
+    feeBps: 30 // 0.3% (range: 1-1000 = 0.01%-10%)
+  })
+});
+
+const { pool } = await response.json();
+// Returns: { poolAddress, lpTokenAddress, creatorAddress, tokenA, tokenB, feeBps }
+
+// Step 2: Send tokens to pool (user signs TX1 + TX2)
+const poolAccount = KeetaNetLib.Account.fromPublicKeyString(pool.poolAddress);
+const tokenAAccount = KeetaNetLib.Account.fromPublicKeyString(pool.tokenA);
+const tokenBAccount = KeetaNetLib.Account.fromPublicKeyString(pool.tokenB);
+
+const tx1Builder = userClient.initBuilder();
+tx1Builder.send(poolAccount, BigInt(pool.amountA), tokenAAccount);
+await userClient.publishBuilder(tx1Builder);
+
+const tx2Builder = userClient.initBuilder();
+tx2Builder.send(poolAccount, BigInt(pool.amountB), tokenBAccount);
+await userClient.publishBuilder(tx2Builder);
+
+// Step 3: Mint LP tokens (backend signs)
+await fetch(`/api/anchor-pools/${pool.poolAddress}/mint-lp`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creatorAddress: pool.creatorAddress,
+    amountA: pool.amountA,
+    amountB: pool.amountB
+  })
+});
+```
+
+### Get Anchor Pool Quotes
+
+```javascript
+// Get quote from Silverback anchor pools
+const response = await fetch('/api/anchor/quote', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    tokenIn: 'keeta_token_a',
+    tokenOut: 'keeta_token_b',
+    amountIn: '1000000000', // bigint as string
+    decimalsIn: 9,
+    decimalsOut: 9
+  })
+});
+
+const { quote } = await response.json();
+// Returns: { amountOut, amountOutFormatted, feeBps, poolAddress, priceImpact, provider: 'Silverback' }
+```
+
+### Execute Anchor Swap
+
+```javascript
+// TX1: User sends tokenIn to pool
+const poolAccount = KeetaNetLib.Account.fromPublicKeyString(quote.poolAddress);
+const tokenInAccount = KeetaNetLib.Account.fromPublicKeyString(quote.tokenIn);
+
+const tx1Builder = userClient.initBuilder();
+tx1Builder.send(poolAccount, BigInt(quote.amountIn), tokenInAccount);
+await userClient.publishBuilder(tx1Builder);
+
+// Wait for finalization
+await new Promise(resolve => setTimeout(resolve, 2000));
+
+// TX2: Backend sends tokenOut to user
+const response = await fetch('/api/anchor/swap', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    quote: quote,
+    userAddress: 'keeta_user_address'
+  })
+});
+
+const { success, amountOut } = await response.json();
+```
+
+### List All Anchor Pools
+
+```javascript
+const response = await fetch('/api/anchor-pools');
+const { pools } = await response.json();
+
+// Each pool contains:
+// {
+//   pool_address, creator_address, token_a, token_b,
+//   fee_bps, status, volume24h, swapCount24h, feesCollected24h
+// }
+```
+
+### Get User's Anchor Pools
+
+```javascript
+const response = await fetch(`/api/anchor-pools/creator/${userAddress}`);
+const { pools } = await response.json();
+```
+
+### Update Pool Fee
+
+```javascript
+await fetch(`/api/anchor-pools/${poolAddress}/update-fee`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creatorAddress: 'keeta_...',
+    feeBps: 50 // 0.5% (range: 1-1000)
+  })
+});
+```
+
+### Update Pool Status
+
+```javascript
+await fetch(`/api/anchor-pools/${poolAddress}/update-status`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    creatorAddress: 'keeta_...',
+    status: 'paused' // 'active' | 'paused' | 'closed'
+  })
+});
+```
+
+### Get Pool Analytics
+
+```javascript
+// 24h volume
+const volume = await fetch(`/api/anchor-pools/${poolAddress}/volume`);
+const { volume24h, swapCount, feesCollected } = await volume.json();
+
+// Swap history
+const swaps = await fetch(`/api/anchor-pools/${poolAddress}/swaps?limit=100`);
+const { swaps: history } = await swaps.json();
+```
+
+---
+
+## Liquidity Pool Formulas
+
+### Initial Liquidity (Anchor Pools)
+
+```javascript
+// Anchor pools use geometric mean for LP calculation
+// Integer square root using Newton's method
+function sqrt(value) {
+  if (value < 0n) throw new Error('Square root of negative numbers is not supported');
+  if (value < 2n) return value;
+
+  function newtonIteration(n, x0) {
+    const x1 = ((n / x0) + x0) >> 1n;
+    if (x0 === x1 || x0 === (x1 - 1n)) return x0;
+    return newtonIteration(n, x1);
+  }
+
+  return newtonIteration(value, 1n);
+}
+
+// Calculate LP tokens: sqrt(amountA * amountB)
+const lpTokens = sqrt(BigInt(amountA) * BigInt(amountB));
+```
+
+### Initial Liquidity (AMM Pools)
+
+```javascript
+// For first LP (traditional AMM)
 const lpTokens = Math.sqrt(amountA * amountB);
 ```
 
