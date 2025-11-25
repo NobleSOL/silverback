@@ -20,6 +20,7 @@ import QuickFill from "@/components/shared/QuickFill";
 import TrendingPills from "@/components/shared/TrendingPills";
 import TokenLogo from "@/components/shared/TokenLogo";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
+import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 import {
   getSwapQuote as getSwapQuoteClient,
   executeSwap as executeSwapClient,
@@ -65,6 +66,7 @@ export default function KeetaIndex() {
   const [swapAmount, setSwapAmount] = useState("");
   const [swapQuote, setSwapQuote] = useState<any>(null);
   const [swapping, setSwapping] = useState(false);
+  const [selectingSwapToken, setSelectingSwapToken] = useState<"from" | "pool" | null>(null);
 
   // Toggle tokens function for swap
   function toggleSwapTokens() {
@@ -402,24 +404,19 @@ export default function KeetaIndex() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectingSwapToken("from")}
+                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                    >
                       {swapTokenIn && (() => {
                         const token = wallet?.tokens.find(t => t.address === swapTokenIn);
                         return token ? <TokenLogo src={token.logoUrl} alt={token.symbol} size={20} /> : null;
                       })()}
-                      <select
-                        value={swapTokenIn}
-                        onChange={(e) => setSwapTokenIn(e.target.value)}
-                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1"
-                      >
-                        <option value="">Select</option>
-                        {wallet?.tokens.map((token) => (
-                          <option key={token.address} value={token.address}>
-                            {token.symbol}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                      <span className="text-sm font-semibold">
+                        {swapTokenIn ? (wallet?.tokens.find(t => t.address === swapTokenIn)?.symbol || "Select") : "Select"}
+                      </span>
+                    </button>
                     <input
                       inputMode="decimal"
                       pattern="^[0-9]*[.,]?[0-9]*$"
@@ -464,7 +461,12 @@ export default function KeetaIndex() {
                     })()}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectingSwapToken("pool")}
+                      disabled={!swapTokenIn}
+                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       {selectedPoolForSwap && (() => {
                         const pool = pools.find(p => p.poolAddress === selectedPoolForSwap);
                         if (!pool) return null;
@@ -473,27 +475,14 @@ export default function KeetaIndex() {
                         const token = wallet?.tokens.find(t => t.address === tokenOut);
                         return token ? <TokenLogo src={token.logoUrl} alt={tokenOutSymbol} size={20} /> : null;
                       })()}
-                      <select
-                        value={selectedPoolForSwap}
-                        onChange={(e) => setSelectedPoolForSwap(e.target.value)}
-                        disabled={!swapTokenIn}
-                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="">Select</option>
-                        {pools
-                          .filter(pool =>
-                            swapTokenIn && (pool.tokenA === swapTokenIn || pool.tokenB === swapTokenIn)
-                          )
-                          .map((pool) => {
-                            const oppositeSymbol = pool.tokenA === swapTokenIn ? pool.symbolB : pool.symbolA;
-                            return (
-                              <option key={pool.poolAddress} value={pool.poolAddress}>
-                                {oppositeSymbol}
-                              </option>
-                            );
-                          })}
-                      </select>
-                    </div>
+                      <span className="text-sm font-semibold">
+                        {selectedPoolForSwap ? (() => {
+                          const pool = pools.find(p => p.poolAddress === selectedPoolForSwap);
+                          if (!pool) return "Select";
+                          return pool.tokenA === swapTokenIn ? pool.symbolB : pool.symbolA;
+                        })() : "Select"}
+                      </span>
+                    </button>
                     <input
                       readOnly
                       value={swapQuote ? swapQuote.amountOutHuman : "0.00"}
@@ -639,6 +628,45 @@ export default function KeetaIndex() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Token Selector Modal */}
+      <KeetaTokenSelector
+        open={selectingSwapToken !== null}
+        onClose={() => setSelectingSwapToken(null)}
+        onSelect={(token: KeetaToken) => {
+          if (selectingSwapToken === "from") {
+            setSwapTokenIn(token.address);
+            // Reset pool selection when changing input token
+            setSelectedPoolForSwap("");
+          } else if (selectingSwapToken === "pool" && swapTokenIn) {
+            // Find pool that connects swapTokenIn to selected output token
+            const pool = pools.find(
+              p =>
+                (p.tokenA === swapTokenIn && p.tokenB === token.address) ||
+                (p.tokenB === swapTokenIn && p.tokenA === token.address)
+            );
+            if (pool) {
+              setSelectedPoolForSwap(pool.poolAddress);
+            }
+          }
+          setSelectingSwapToken(null);
+        }}
+        tokens={selectingSwapToken === "from"
+          ? sortedTokens
+          : selectingSwapToken === "pool" && swapTokenIn
+            ? (() => {
+                // Show only tokens that have pools with swapTokenIn
+                const availableOutputTokens = new Set<string>();
+                pools.forEach(pool => {
+                  if (pool.tokenA === swapTokenIn) availableOutputTokens.add(pool.tokenB);
+                  if (pool.tokenB === swapTokenIn) availableOutputTokens.add(pool.tokenA);
+                });
+                return sortedTokens.filter(t => availableOutputTokens.has(t.address));
+              })()
+            : []
+        }
+        excludeAddress={swapTokenIn}
+      />
     </div>
   );
 }
