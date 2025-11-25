@@ -12,6 +12,7 @@ import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keet
 import { createKeetaClientFromSeed } from "@/lib/keeta-client";
 import QuickFill from "@/components/shared/QuickFill";
 import TokenLogo from "@/components/shared/TokenLogo";
+import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 
 export default function KeetaAnchor() {
   const { wallet, sortedTokens, tokenPrices, connectKeythingsWallet, loading } = useKeetaWallet();
@@ -31,6 +32,7 @@ export default function KeetaAnchor() {
   const [selectedQuote, setSelectedQuote] = useState<AnchorQuote | null>(null);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [selectingToken, setSelectingToken] = useState<"from" | "to" | null>(null);
 
   // Toggle tokens
   function toggleTokens() {
@@ -199,21 +201,16 @@ export default function KeetaAnchor() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectingToken("from")}
+                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                    >
                       {fromTokenInfo && <TokenLogo src={fromTokenInfo.logoUrl} alt={fromTokenInfo.symbol} size={20} />}
-                      <select
-                        value={tokenFrom}
-                        onChange={(e) => setTokenFrom(e.target.value)}
-                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1"
-                      >
-                        <option value="">Select</option>
-                        {sortedTokens.map((token) => (
-                          <option key={token.address} value={token.address}>
-                            {token.symbol}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                      <span className="text-sm font-semibold">
+                        {fromTokenInfo ? fromTokenInfo.symbol : "Select"}
+                      </span>
+                    </button>
                     <input
                       inputMode="decimal"
                       pattern="^[0-9]*[.,]?[0-9]*$"
@@ -253,24 +250,17 @@ export default function KeetaAnchor() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectingToken("to")}
+                      disabled={!tokenFrom}
+                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       {toTokenInfo && <TokenLogo src={toTokenInfo.logoUrl} alt={toTokenInfo.symbol} size={20} />}
-                      <select
-                        value={tokenTo}
-                        onChange={(e) => setTokenTo(e.target.value)}
-                        disabled={!tokenFrom}
-                        className="text-sm font-semibold border-none outline-none cursor-pointer bg-transparent flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="">Select</option>
-                        {sortedTokens
-                          .filter((t) => t.address !== tokenFrom)
-                          .map((token) => (
-                            <option key={token.address} value={token.address}>
-                              {token.symbol}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
+                      <span className="text-sm font-semibold">
+                        {toTokenInfo ? toTokenInfo.symbol : "Select"}
+                      </span>
+                    </button>
                     <input
                       readOnly
                       value={selectedQuote ? selectedQuote.amountOut : "0.00"}
@@ -353,6 +343,22 @@ export default function KeetaAnchor() {
             </div>
           )}
         </div>
+
+        {/* Token Selector Modal */}
+        <KeetaTokenSelector
+          open={selectingToken !== null}
+          onClose={() => setSelectingToken(null)}
+          onSelect={(token: KeetaToken) => {
+            if (selectingToken === "from") {
+              setTokenFrom(token.address);
+            } else if (selectingToken === "to") {
+              setTokenTo(token.address);
+            }
+            setSelectingToken(null);
+          }}
+          tokens={sortedTokens}
+          excludeAddress={selectingToken === "to" ? tokenFrom : undefined}
+        />
       </div>
     </div>
   );
