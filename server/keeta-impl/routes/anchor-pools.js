@@ -233,6 +233,7 @@ router.post('/create', async (req, res) => {
       tokenA,
       tokenB,
       feeBps,
+      lpTokenAddress,
     });
 
     console.log(`✅ Anchor pool saved to database`);

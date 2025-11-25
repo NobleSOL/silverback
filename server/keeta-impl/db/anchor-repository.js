@@ -11,21 +11,22 @@ export class AnchorRepository {
    */
   async saveAnchorPool(anchorData) {
     const pool = getDbPool();
-    const { poolAddress, creatorAddress, tokenA, tokenB, feeBps } = anchorData;
+    const { poolAddress, creatorAddress, tokenA, tokenB, feeBps, lpTokenAddress } = anchorData;
     const pairKey = getPairKey(tokenA, tokenB);
 
     const query = `
-      INSERT INTO anchor_pools (pool_address, creator_address, token_a, token_b, pair_key, fee_bps, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO anchor_pools (pool_address, creator_address, token_a, token_b, pair_key, fee_bps, status, lp_token_address)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (pool_address)
       DO UPDATE SET
         fee_bps = EXCLUDED.fee_bps,
         status = EXCLUDED.status,
+        lp_token_address = EXCLUDED.lp_token_address,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `;
 
-    const values = [poolAddress, creatorAddress, tokenA, tokenB, pairKey, feeBps || 30, 'active'];
+    const values = [poolAddress, creatorAddress, tokenA, tokenB, pairKey, feeBps || 30, 'active', lpTokenAddress];
     const result = await pool.query(query, values);
     return result.rows[0];
   }
