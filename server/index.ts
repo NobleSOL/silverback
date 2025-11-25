@@ -21,6 +21,9 @@ export function createServer() {
       // Allow Render.com (for backend-to-backend calls if needed)
       if (origin.includes('onrender.com')) return callback(null, true);
 
+      // Allow production domain
+      if (origin.includes('silverbackdefi.app')) return callback(null, true);
+
       // Reject all other origins
       callback(new Error('Not allowed by CORS'));
     },
