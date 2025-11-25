@@ -146,7 +146,6 @@ export default function MyAnchors() {
         console.log('🔐 Requesting user client from Keythings...');
         const userClient = await provider.getUserClient();
 
-        const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(pool.poolAddress);
         const tokenAAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenA);
         const tokenBAccount = KeetaNet.lib.Account.fromPublicKeyString(tokenB);
 
@@ -154,11 +153,11 @@ export default function MyAnchors() {
         console.log('📝 Building transaction (user sends tokens to pool)...');
         const txBuilder = userClient.initBuilder();
 
-        // Send tokenA to pool
-        txBuilder.send(poolAccount.publicKeyString, amountABigInt, tokenAAccount);
+        // Send tokenA to pool (use pool address string, not Account object)
+        txBuilder.send(pool.poolAddress, amountABigInt, tokenAAccount);
 
         // Send tokenB to pool
-        txBuilder.send(poolAccount.publicKeyString, amountBBigInt, tokenBAccount);
+        txBuilder.send(pool.poolAddress, amountBBigInt, tokenBAccount);
 
         // Publish TX (will prompt user via Keythings UI)
         console.log('✍️ Prompting user to sign transaction via Keythings...');
