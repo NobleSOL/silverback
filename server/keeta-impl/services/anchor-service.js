@@ -123,8 +123,8 @@ export class SilverbackAnchorService {
         creatorAddress: pool.creator_address,
         tokenIn,
         tokenOut,
-        amountIn,
-        amountOut,
+        amountIn: amountIn.toString(), // Convert BigInt to string for JSON serialization
+        amountOut: amountOut.toString(), // Convert BigInt to string for JSON serialization
         amountInFormatted,
         amountOutFormatted,
         fee: feeFormatted,
@@ -160,13 +160,17 @@ export class SilverbackAnchorService {
       const tokenOutAccount = accountFromAddress(quote.tokenOut);
       const userAccount = accountFromAddress(userAddress);
 
+      // Convert string amounts back to BigInt for blockchain operations
+      const amountInBigInt = BigInt(quote.amountIn);
+      const amountOutBigInt = BigInt(quote.amountOut);
+
       // TX2: OPS sends tokenOut from pool to user
       // (User has already sent tokenIn to pool via TX1 in frontend)
       console.log(`📝 TX2: Sending ${quote.amountOutFormatted} ${quote.symbolOut} to user`);
       const tx2Builder = opsClient.initBuilder();
       tx2Builder.send(
         userAccount,
-        quote.amountOut,
+        amountOutBigInt,
         tokenOutAccount,
         undefined,
         { account: poolAccount }
@@ -179,9 +183,9 @@ export class SilverbackAnchorService {
         poolAddress: quote.poolAddress,
         tokenIn: quote.tokenIn,
         tokenOut: quote.tokenOut,
-        amountIn: quote.amountIn,
-        amountOut: quote.amountOut,
-        feeCollected: quote.amountIn - (quote.amountIn * (10000n - BigInt(quote.feeBps))) / 10000n,
+        amountIn: amountInBigInt,
+        amountOut: amountOutBigInt,
+        feeCollected: amountInBigInt - (amountInBigInt * (10000n - BigInt(quote.feeBps))) / 10000n,
         userAddress,
       });
 
