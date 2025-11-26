@@ -234,84 +234,77 @@ export async function getAnchorEstimates(
 /**
  * Execute anchor swap using a quote
  * Routes to appropriate backend (FX Anchor SDK or Silverback service)
+ * @throws Error if swap execution fails
  */
 export async function executeAnchorSwap(
   anchorQuote: AnchorQuote,
   userClient?: any,
   userAddress?: string
-): Promise<{ success: boolean; exchangeID?: string; error?: string }> {
-  try {
-    console.log(`🚀 Executing ${anchorQuote.providerID} swap...`);
+): Promise<{ success: boolean; exchangeID?: string }> {
+  console.log(`🚀 Executing ${anchorQuote.providerID} swap...`);
 
-    if (!anchorQuote.rawQuote) {
-      throw new Error('Invalid anchor quote - missing raw quote data');
+  if (!anchorQuote.rawQuote) {
+    throw new Error('Invalid anchor quote - missing raw quote data');
+  }
+
+  // Route to appropriate backend
+  if (anchorQuote.providerID === 'Silverback') {
+    // Execute via Silverback: TX1 (user signs) + TX2 (backend completes)
+    if (!userClient || !userAddress) {
+      throw new Error('User client and address required for Silverback swaps');
     }
 
-    // Route to appropriate backend
-    if (anchorQuote.providerID === 'Silverback') {
-      // Execute via Silverback: TX1 (user signs) + TX2 (backend completes)
-      if (!userClient || !userAddress) {
-        throw new Error('User client and address required for Silverback swaps');
-      }
+    const quote = anchorQuote.rawQuote;
 
-      const quote = anchorQuote.rawQuote;
+    console.log('📝 TX1: Sending tokens to pool...');
 
-      console.log('📝 TX1: Sending tokens to pool...');
+    // TX1: User sends tokenIn to pool
+    // Import KeetaNet for account creation (dynamic import like Pool.tsx)
+    const KeetaNetDynamic = await import('@keetanetwork/keetanet-client');
+    const tokenInAccount = KeetaNetDynamic.lib.Account.fromPublicKeyString(quote.tokenIn);
 
-      // TX1: User sends tokenIn to pool
-      // Import KeetaNet for account creation (dynamic import like Pool.tsx)
-      const KeetaNetDynamic = await import('@keetanetwork/keetanet-client');
-      const tokenInAccount = KeetaNetDynamic.lib.Account.fromPublicKeyString(quote.tokenIn);
+    const tx1Builder = userClient.initBuilder();
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
+    await userClient.publishBuilder(tx1Builder);
 
-      const tx1Builder = userClient.initBuilder();
-      tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
-      await userClient.publishBuilder(tx1Builder);
+    console.log('✅ TX1 completed, waiting for finalization...');
 
-      console.log('✅ TX1 completed, waiting for finalization...');
+    // Wait for finalization
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Wait for finalization
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('📝 TX2: Requesting backend to send tokens from pool...');
 
-      console.log('📝 TX2: Requesting backend to send tokens from pool...');
+    // TX2: Call backend to complete the swap
+    const response = await fetch(`${API_BASE}/anchor/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quote,
+        userAddress,
+      }),
+    });
 
-      // TX2: Call backend to complete the swap
-      const response = await fetch(`${API_BASE}/anchor/swap`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          quote,
-          userAddress,
-        }),
-      });
+    const data = await response.json();
 
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Silverback swap TX2 failed');
-      }
-
-      console.log('✅ Silverback swap completed');
-
-      return {
-        success: true,
-        exchangeID: data.poolAddress, // Use pool address as identifier
-      };
-    } else {
-      // Execute via FX Anchor SDK
-      const exchange = await anchorQuote.rawQuote.createExchange();
-
-      console.log('✅ FX Anchor swap submitted:', exchange.exchange.exchangeID);
-
-      return {
-        success: true,
-        exchangeID: exchange.exchange.exchangeID,
-      };
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Silverback swap TX2 failed');
     }
-  } catch (error: any) {
-    console.error('❌ Anchor swap failed:', error);
+
+    console.log('✅ Silverback swap completed');
+
     return {
-      success: false,
-      error: error.message || 'Failed to execute anchor swap',
+      success: true,
+      exchangeID: data.poolAddress, // Use pool address as identifier
+    };
+  } else {
+    // Execute via FX Anchor SDK
+    const exchange = await anchorQuote.rawQuote.createExchange();
+
+    console.log('✅ FX Anchor swap submitted:', exchange.exchange.exchangeID);
+
+    return {
+      success: true,
+      exchangeID: exchange.exchange.exchangeID,
     };
   }
 }

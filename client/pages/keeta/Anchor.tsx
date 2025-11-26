@@ -127,29 +127,23 @@ export default function KeetaAnchor() {
 
     setExecuting(true);
     try {
-      console.log("🚀 Executing anchor swap...");
-
       // Create user client for Silverback swaps
       const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
 
       // Execute swap with user client and address
       const result = await executeAnchorSwap(selectedQuote, userClient, wallet.address);
 
-      if (result.success) {
-        toast({
-          title: "Swap executed!",
-          description: `Provider: ${selectedQuote.providerID}`,
-        });
+      toast({
+        title: "Swap executed!",
+        description: `Provider: ${selectedQuote.providerID}`,
+      });
 
-        // Reset form
-        setAmount("");
-        setAnchorQuotes([]);
-        setSelectedQuote(null);
-      } else {
-        throw new Error(result.error || "Swap failed");
-      }
+      // Reset form
+      setAmount("");
+      setAnchorQuotes([]);
+      setSelectedQuote(null);
     } catch (error: any) {
-      console.error("Swap execution failed:", error);
+      console.error("❌ Swap execution failed:", error);
       toast({
         title: "Swap failed",
         description: error.message || "Failed to execute anchor swap",
