@@ -263,11 +263,11 @@ export async function executeAnchorSwap(
       console.log('📝 TX1: Sending tokens to pool...');
 
       // TX1: User sends tokenIn to pool
-      const poolAccount = KeetaNetLib.Account.fromPublicKeyString(quote.poolAddress);
+      // Note: send() expects string address, not Account object
       const tokenInAccount = KeetaNetLib.Account.fromPublicKeyString(quote.tokenIn);
 
       const tx1Builder = userClient.initBuilder();
-      tx1Builder.send(poolAccount, BigInt(quote.amountIn), tokenInAccount);
+      tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
       await userClient.publishBuilder(tx1Builder);
 
       console.log('✅ TX1 completed, waiting for finalization...');
