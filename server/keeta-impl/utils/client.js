@@ -441,6 +441,8 @@ export async function createLPToken(poolAddress, tokenA, tokenB) {
     pool: poolAddress,
     tokenA,
     tokenB,
+    decimals: 9,  // Include in metadata for consistency
+    decimalPlaces: 9,  // Alternative field name
     icon: 'https://cdn.builder.io/api/v1/image/assets%2Fd70091a6f5494e0195b033a72f7e79ae%2Fee3a0a5652aa480f9aa42277503e94b2?format=webp&width=256',
     createdAt: Date.now()
   };
