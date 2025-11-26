@@ -3,8 +3,12 @@
  * Provides access to FX anchor liquidity for token swaps
  */
 
-import { FX, lib as KeetaNetLib, KeetaNet } from '@keetanetwork/anchor';
+import { FX } from '@keetanetwork/anchor';
+import * as KeetaNet from '@keetanetwork/keetanet-client';
 import type { UserClient } from '@keetanetwork/keetanet-client';
+
+// Use KeetaNet.lib for Account utilities
+const KeetaNetLib = KeetaNet.lib;
 
 export type AnchorQuote = {
   from: string; // Token address
