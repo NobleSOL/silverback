@@ -12,6 +12,7 @@ import {
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 import TokenLogo from "@/components/shared/TokenLogo";
+import { KeetaPoolCard, KeetaPoolCardData } from "@/components/keeta/KeetaPoolCard";
 
 // API base URL
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
@@ -43,6 +44,19 @@ interface AnchorPool {
   decimalsB?: number;
   iconA?: string | null;
   iconB?: string | null;
+  // Reserve data from backend
+  reserveA?: string;
+  reserveB?: string;
+  reserveAHuman?: number;
+  reserveBHuman?: number;
+  totalShares?: string;
+  // User position data from backend
+  userPosition?: {
+    shares: string;
+    sharePercent: number;
+    amountA: string;
+    amountB: string;
+  };
 }
 
 export default function MyAnchors() {
@@ -64,6 +78,9 @@ export default function MyAnchors() {
   // Update pool state
   const [updatingPool, setUpdatingPool] = useState<string | null>(null);
   const [updatingFee, setUpdatingFee] = useState<{ poolAddress: string; fee: number } | null>(null);
+
+  // Remove liquidity state
+  const [removingLiq, setRemovingLiq] = useState(false);
 
   // Load user's anchor pools
   async function loadMyPools() {
@@ -532,52 +549,104 @@ export default function MyAnchors() {
                   <p>You haven't created any anchor pools yet.</p>
                   <p className="text-sm mt-2">Click "Create Pool" to get started!</p>
                 </div>
-              ) : (
-                myPools.map((pool) => {
-                  // Use metadata from backend API (symbolA, symbolB, iconA, iconB)
-                  const symbolA = pool.symbolA || pool.token_a.slice(0, 8);
-                  const symbolB = pool.symbolB || pool.token_b.slice(0, 8);
-                  const iconA = pool.iconA || getTokenLogo(symbolA);
-
-                  return (
-                    <div key={pool.pool_address} className="glass-card rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <TokenLogo src={iconA} alt={symbolA} size={24} />
-                          <span className="font-semibold">
-                            {symbolA} / {symbolB}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            pool.status === 'active' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {pool.status}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <div>
-                          <div className="text-xs text-muted-foreground">Fee</div>
-                          <div className="font-medium">{(pool.fee_bps / 100).toFixed(2)}%</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">24h Swaps</div>
-                          <div className="font-medium">{pool.swapCount24h || 0}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground">24h Fees</div>
-                          <div className="font-medium text-sky-400">
-                            ${parseFloat(pool.feesCollected24h || '0').toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+              ) : null}
             </div>
           )}
         </div>
+
+        {/* Active Pools Grid */}
+        {wallet && !createMode && myPools.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4">Your FX Anchor Pools</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myPools.map((pool) => {
+                // Convert AnchorPool to KeetaPoolCardData format
+                const poolCardData: KeetaPoolCardData = {
+                  poolAddress: pool.pool_address,
+                  tokenA: pool.token_a,
+                  tokenB: pool.token_b,
+                  symbolA: pool.symbolA || pool.token_a.slice(0, 8),
+                  symbolB: pool.symbolB || pool.token_b.slice(0, 8),
+                  reserveA: pool.reserveA || '0',
+                  reserveB: pool.reserveB || '0',
+                  reserveAHuman: pool.reserveAHuman || 0,
+                  reserveBHuman: pool.reserveBHuman || 0,
+                  decimalsA: pool.decimalsA || 9,
+                  decimalsB: pool.decimalsB || 9,
+                  totalShares: pool.totalShares || '0',
+                  userPosition: pool.userPosition,
+                };
+
+                return (
+                  <KeetaPoolCard
+                    key={pool.pool_address}
+                    pool={poolCardData}
+                    onManage={(selectedPool) => {
+                      // Scroll to top and prepare to add more liquidity
+                      setCreateMode(false);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+
+                      // Pre-fill the token selection
+                      setTokenA(selectedPool.tokenA);
+                      setTokenB(selectedPool.tokenB);
+
+                      toast({
+                        title: "Add More Liquidity",
+                        description: `Adding liquidity to ${selectedPool.symbolA}/${selectedPool.symbolB} pool`,
+                      });
+                    }}
+                    onRemoveLiquidity={async (selectedPool, percent) => {
+                      // Remove liquidity from anchor pool
+                      if (!wallet) return;
+
+                      try {
+                        setRemovingLiq(true);
+
+                        // Calculate LP amount to remove based on percentage
+                        const totalShares = BigInt(selectedPool.userPosition?.shares || '0');
+                        const sharesToRemove = (totalShares * BigInt(percent)) / 100n;
+
+                        // Call backend to remove liquidity from anchor pool
+                        const response = await fetch(`${API_BASE}/anchor-pools/${selectedPool.poolAddress}/remove-liquidity`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            userAddress: wallet.address,
+                            lpAmount: sharesToRemove.toString(),
+                            amountAMin: '0', // TODO: Add slippage protection
+                            amountBMin: '0',
+                          }),
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                          toast({
+                            title: "Liquidity Removed!",
+                            description: `Removed ${percent}% of your liquidity from ${selectedPool.symbolA}/${selectedPool.symbolB}`,
+                          });
+
+                          // Reload pools to reflect changes
+                          await loadMyPools();
+                        } else {
+                          throw new Error(data.error || "Failed to remove liquidity");
+                        }
+                      } catch (error: any) {
+                        toast({
+                          title: "Remove Liquidity Failed",
+                          description: error.message,
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setRemovingLiq(false);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Token Selector Modal */}
         <KeetaTokenSelector

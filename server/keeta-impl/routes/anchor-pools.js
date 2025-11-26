@@ -61,17 +61,58 @@ router.get('/creator/:address', async (req, res) => {
     const repository = getAnchorRepository();
     const pools = await repository.getAnchorPoolsByCreator(address);
 
-    // Enhance pools with token metadata (symbols, decimals, icons)
-    const { fetchTokenMetadata } = await import('../utils/client.js');
+    // Enhance pools with token metadata, reserves, and user LP position
+    const { fetchTokenMetadata, getTokenBalance, getOpsClient } = await import('../utils/client.js');
+    const opsClient = await getOpsClient();
+
     const enhancedPools = await Promise.all(
       pools.map(async (pool) => {
         try {
-          // Fetch metadata for both tokens
-          const [metadataA, metadataB, volumeData] = await Promise.all([
+          // Fetch metadata and reserves for both tokens
+          const [metadataA, metadataB, volumeData, reserveA, reserveB] = await Promise.all([
             fetchTokenMetadata(pool.token_a),
             fetchTokenMetadata(pool.token_b),
             repository.getAnchor24hVolume(pool.pool_address).catch(() => null),
+            getTokenBalance(pool.pool_address, pool.token_a),
+            getTokenBalance(pool.pool_address, pool.token_b),
           ]);
+
+          // Get LP token supply and user's LP balance
+          let totalShares = 0n;
+          let userShares = 0n;
+          let userSharePercent = 0;
+          let userAmountA = '0';
+          let userAmountB = '0';
+
+          if (pool.lp_token_address) {
+            try {
+              // Get LP token info
+              const lpTokenInfo = await opsClient.client.getAccountsInfo([pool.lp_token_address]);
+              const lpData = lpTokenInfo[pool.lp_token_address];
+              totalShares = lpData?.info?.supply ? BigInt(lpData.info.supply) : 0n;
+
+              // Get user's LP balance
+              userShares = await getTokenBalance(address, pool.lp_token_address);
+
+              // Calculate user's share percentage and amounts
+              if (totalShares > 0n && userShares > 0n) {
+                userSharePercent = Number((userShares * 10000n) / totalShares) / 100;
+
+                // Calculate user's underlying token amounts
+                const userAmountABigInt = (reserveA * userShares) / totalShares;
+                const userAmountBBigInt = (reserveB * userShares) / totalShares;
+
+                userAmountA = (Number(userAmountABigInt) / Math.pow(10, metadataA.decimals)).toFixed(6);
+                userAmountB = (Number(userAmountBBigInt) / Math.pow(10, metadataB.decimals)).toFixed(6);
+              }
+            } catch (lpError) {
+              console.warn(`Failed to fetch LP data for pool ${pool.pool_address}:`, lpError.message);
+            }
+          }
+
+          // Format reserve amounts
+          const reserveAHuman = Number(reserveA) / Math.pow(10, metadataA.decimals);
+          const reserveBHuman = Number(reserveB) / Math.pow(10, metadataB.decimals);
 
           return {
             ...pool,
@@ -81,12 +122,23 @@ router.get('/creator/:address', async (req, res) => {
             decimalsB: metadataB.decimals,
             iconA: metadataA.icon,
             iconB: metadataB.icon,
+            reserveA: reserveA.toString(),
+            reserveB: reserveB.toString(),
+            reserveAHuman,
+            reserveBHuman,
+            totalShares: totalShares.toString(),
             volume24h: volumeData?.total_volume_in || '0',
             swapCount24h: volumeData?.swap_count || 0,
             feesCollected24h: volumeData?.total_fees || '0',
+            userPosition: userShares > 0n ? {
+              shares: userShares.toString(),
+              sharePercent: userSharePercent,
+              amountA: userAmountA,
+              amountB: userAmountB,
+            } : undefined,
           };
         } catch (error) {
-          console.warn(`Failed to fetch metadata for pool ${pool.pool_address}:`, error.message);
+          console.warn(`Failed to fetch data for pool ${pool.pool_address}:`, error.message);
           // Return pool with fallback metadata
           return {
             ...pool,
@@ -94,6 +146,11 @@ router.get('/creator/:address', async (req, res) => {
             symbolB: pool.token_b.slice(0, 8),
             decimalsA: 9,
             decimalsB: 9,
+            reserveA: '0',
+            reserveB: '0',
+            reserveAHuman: 0,
+            reserveBHuman: 0,
+            totalShares: '0',
             volume24h: '0',
             swapCount24h: 0,
             feesCollected24h: '0',
