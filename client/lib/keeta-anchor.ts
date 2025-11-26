@@ -4,11 +4,7 @@
  */
 
 import { FX } from '@keetanetwork/anchor';
-import * as KeetaNet from '@keetanetwork/keetanet-client';
 import type { UserClient } from '@keetanetwork/keetanet-client';
-
-// Use KeetaNet.lib for Account utilities
-const KeetaNetLib = KeetaNet.lib;
 
 // API base URL - use environment variable or default to current origin
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
@@ -263,8 +259,9 @@ export async function executeAnchorSwap(
       console.log('📝 TX1: Sending tokens to pool...');
 
       // TX1: User sends tokenIn to pool
-      // Note: send() expects string address, not Account object
-      const tokenInAccount = KeetaNetLib.Account.fromPublicKeyString(quote.tokenIn);
+      // Import KeetaNet for account creation (dynamic import like Pool.tsx)
+      const KeetaNetDynamic = await import('@keetanetwork/keetanet-client');
+      const tokenInAccount = KeetaNetDynamic.lib.Account.fromPublicKeyString(quote.tokenIn);
 
       const tx1Builder = userClient.initBuilder();
       tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
