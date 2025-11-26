@@ -10,6 +10,9 @@ import type { UserClient } from '@keetanetwork/keetanet-client';
 // Use KeetaNet.lib for Account utilities
 const KeetaNetLib = KeetaNet.lib;
 
+// API base URL - use environment variable or default to current origin
+const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
+
 export type AnchorQuote = {
   from: string; // Token address
   to: string; // Token address
@@ -69,13 +72,10 @@ export async function getAnchorQuotes(
     try {
       const fxClient = createFXClient(userClient);
 
-      // Create conversion request using the Account.fromPublicKeyString format
-      const fromAccount = KeetaNetLib.Account.fromPublicKeyString(fromToken);
-      const toAccount = KeetaNetLib.Account.fromPublicKeyString(toToken);
-
+      // FX SDK expects token addresses as strings, not Account objects
       const conversionRequest = {
-        from: fromAccount,
-        to: toAccount,
+        from: fromToken,
+        to: toToken,
         amount: amount,
         affinity: 'from' as const, // Amount is in 'from' token
       };
@@ -119,7 +119,7 @@ export async function getAnchorQuotes(
 
     // 2. Fetch Silverback pool quotes
     try {
-      const response = await fetch('/api/anchor/quote', {
+      const response = await fetch(`${API_BASE}/anchor/quote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -195,12 +195,10 @@ export async function getAnchorEstimates(
   try {
     const fxClient = createFXClient(userClient);
 
-    const fromAccount = KeetaNetLib.Account.fromPublicKeyString(fromToken);
-    const toAccount = KeetaNetLib.Account.fromPublicKeyString(toToken);
-
+    // FX SDK expects token addresses as strings
     const conversionRequest = {
-      from: fromAccount,
-      to: toAccount,
+      from: fromToken,
+      to: toToken,
       amount: amount,
       affinity: 'from' as const,
     };
@@ -280,7 +278,7 @@ export async function executeAnchorSwap(
       console.log('📝 TX2: Requesting backend to send tokens from pool...');
 
       // TX2: Call backend to complete the swap
-      const response = await fetch('/api/anchor/swap', {
+      const response = await fetch(`${API_BASE}/anchor/swap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,10 +356,9 @@ export async function listAvailableConversions(
   try {
     const fxClient = createFXClient(userClient);
 
-    const fromAccount = KeetaNetLib.Account.fromPublicKeyString(fromToken);
-
+    // FX SDK expects token address as string
     const result = await fxClient.listPossibleConversions({
-      from: fromAccount,
+      from: fromToken,
     });
 
     if (!result || !result.conversions) {
