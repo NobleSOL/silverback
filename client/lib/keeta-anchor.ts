@@ -278,15 +278,9 @@ export async function executeAnchorSwap(
     console.log('📝 TX1: Sending tokens to pool...');
 
     // TX1: User sends tokenIn to pool
-    // Import KeetaNet for account creation (dynamic import like Pool.tsx)
-    const KeetaNetDynamic = await import('@keetanetwork/keetanet-client');
-
-    console.log('🔍 Creating Account from:', quote.tokenIn);
-    const tokenInAccount = KeetaNetDynamic.lib.Account.fromPublicKeyString(quote.tokenIn);
-    console.log('✅ Token account created:', tokenInAccount ? 'success' : 'FAILED');
-
+    // Pass token address as string (like Index.tsx does - both patterns work)
     const tx1Builder = userClient.initBuilder();
-    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
     await userClient.publishBuilder(tx1Builder);
 
     console.log('✅ TX1 completed, waiting for finalization...');
