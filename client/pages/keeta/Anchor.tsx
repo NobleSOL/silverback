@@ -65,8 +65,16 @@ export default function KeetaAnchor() {
 
     setLoadingQuotes(true);
     try {
-      // Create user client
-      const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
+      // Import Keythings provider helper
+      const { getKeythingsProvider } = await import("@/lib/keythings-provider");
+
+      // Get user client from Keythings provider
+      const provider = getKeythingsProvider();
+      if (!provider) {
+        throw new Error("Keythings provider not found");
+      }
+
+      const userClient = await provider.getUserClient();
 
       // Convert amount to atomic units
       const decimalsFrom = fromTokenInfo?.decimals || 9;
