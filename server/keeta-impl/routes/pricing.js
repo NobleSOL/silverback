@@ -88,15 +88,15 @@ async function fetchKTAPrice() {
     console.warn('⚠️ Failed to fetch KTA price from CoinGecko:', error.message);
   }
 
-  // If we have a cached price (even if expired), use it instead of fallback
+  // If we have a cached price (even if expired), use it
   if (cachedKTAPrice) {
     console.log(`ℹ️ Using cached KTA price: $${cachedKTAPrice}`);
     return cachedKTAPrice;
   }
 
-  // Last resort fallback
-  console.warn('⚠️ Using fallback KTA price: $0.15');
-  return 0.15;
+  // No fallback - if CoinGecko fails and no cache, return null
+  console.error('❌ Unable to fetch KTA price from CoinGecko and no cache available');
+  return null;
 }
 
 /**
@@ -110,15 +110,27 @@ async function fetchKTAPrice() {
 export async function calculateTokenPrices(addresses) {
   const prices = {};
 
-  // Get KTA price from CoinGecko (with fallback)
+  // Get KTA price from CoinGecko (no fallback)
   const ktaPrice = await fetchKTAPrice();
+
+  // If KTA price is unavailable, return null for all tokens
+  if (!ktaPrice) {
+    console.error('❌ Cannot calculate token prices without KTA price');
+    for (const address of addresses) {
+      prices[address] = {
+        priceUsd: null,
+        change24h: null,
+      };
+    }
+    return prices;
+  }
 
   const poolManager = await getPoolManager();
   const pools = poolManager.getAllPools();
 
   for (const address of addresses) {
     if (address === KTA_ADDRESS) {
-      // KTA has a known price
+      // KTA has a known price from CoinGecko
       prices[address] = {
         priceUsd: ktaPrice,
         change24h: null, // TODO: Calculate from historical data when available
