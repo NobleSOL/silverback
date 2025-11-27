@@ -266,50 +266,17 @@ export async function executeAnchorSwap(
       throw new Error(`Invalid quote: missing amountIn field`);
     }
 
-    console.log('📝 TX1: Creating swap request...');
+    console.log('📝 TX1: Sending tokens to pool...');
     console.log('   Pool address:', quote.poolAddress);
     console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
-    console.log('   Receiving:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
+    console.log('   Expecting:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
 
-    // Import KeetaNet library
-    const KeetaNet = await import('@keetanetwork/keetanet-client');
-
-    // Create swap request using builder pattern (same as FX Anchor SDK)
-    // This creates a proper SWAP block instead of SEND block
-    try {
-      const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress);
-      const tokenInAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenIn);
-      const tokenOutAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenOut);
-
-      // Build swap request: send tokenIn, receive tokenOut
-      const tx1Builder = userClient.initBuilder();
-
-      // Send tokens to pool
-      tx1Builder.send(
-        poolAccount,
-        BigInt(quote.amountIn),
-        tokenInAccount
-      );
-
-      // Request to receive tokens from pool (creates swap request)
-      tx1Builder.receive(
-        poolAccount,
-        BigInt(quote.amountOut),
-        tokenOutAccount,
-        true  // enforceable = true (required for swap requests)
-      );
-
-      await userClient.publishBuilder(tx1Builder);
-      console.log('✅ TX1 swap request created using builder.receive()');
-    } catch (swapError) {
-      console.warn('⚠️ Failed to create swap request with receive():', swapError);
-
-      // Fallback to simple send if swap request fails
-      const tx1Builder = userClient.initBuilder();
-      tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
-      await userClient.publishBuilder(tx1Builder);
-      console.log('✅ TX1 completed using fallback send()');
-    }
+    // TX1: User sends tokens to pool
+    // Backend will complete the swap using acceptSwapRequest()
+    const tx1Builder = userClient.initBuilder();
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+    await userClient.publishBuilder(tx1Builder);
+    console.log('✅ TX1 completed - tokens sent to pool');
 
     console.log('⏳ Waiting for finalization...');
 
