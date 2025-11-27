@@ -266,48 +266,32 @@ export async function executeAnchorSwap(
       throw new Error(`Invalid quote: missing amountIn field`);
     }
 
-    console.log('📝 TX1: Creating swap request...');
+    console.log('📝 TX1: Sending tokens to pool...');
     console.log('   Pool address:', quote.poolAddress);
-    console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
-    console.log('   Receiving:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
+    console.log('   Amount:', quote.amountIn);
+    console.log('   Token:', quote.tokenIn);
 
-    // Import KeetaNet library
-    const KeetaNet = await import('@keetanetwork/keetanet-client');
+    // TX1: User sends tokenIn to pool (simple send, not swap request)
+    // Note: This shows as "SEND" in explorer, not "SWAP", but Keythings wallet
+    // doesn't support createSwapRequest() API
+    const tx1Builder = userClient.initBuilder();
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+    await userClient.publishBuilder(tx1Builder);
 
-    // TX1: User creates swap request using SDK static method
-    // (Keythings userClient doesn't have instance method, use static)
-    const swapBlock = await KeetaNet.lib.UserClient.createSwapRequest(
-      {
-        from: {
-          account: userClient.account,
-          amount: BigInt(quote.amountIn),
-          token: quote.tokenIn
-        },
-        to: {
-          account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
-          amount: BigInt(quote.amountOut),
-          token: quote.tokenOut
-        }
-      },
-      userClient
-    );
-
-    console.log('✅ TX1 swap request created');
-    console.log('   Block hash:', swapBlock.hash ? swapBlock.hash.toString('hex') : 'N/A');
+    console.log('✅ TX1 completed, waiting for finalization...');
 
     // Wait for finalization
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    console.log('📝 TX2: Requesting backend to accept swap...');
+    console.log('📝 TX2: Requesting backend to send tokens from pool...');
 
-    // TX2: Call backend to accept the swap
+    // TX2: Call backend to complete the swap
     const response = await fetch(`${API_BASE}/anchor/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quote,
         userAddress,
-        swapBlockHash: swapBlock.hash ? swapBlock.hash.toString('hex') : null,
       }),
     });
 

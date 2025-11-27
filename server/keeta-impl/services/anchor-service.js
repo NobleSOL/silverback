@@ -140,15 +140,14 @@ export class SilverbackAnchorService {
   }
 
   /**
-   * Execute TX2 of a swap (backend accepts swap request after user created it in TX1)
-   * User must have already created swap request via TX1
+   * Execute TX2 of a swap (backend completes swap after user signed TX1)
+   * User must have already sent tokens to pool via TX1
    *
    * @param {Object} quote - Quote object from getQuote()
    * @param {string} userAddress - User's wallet address
-   * @param {string} swapBlockHash - Hash of the swap request block from TX1
    * @returns {Promise<Object>} Swap result
    */
-  async executeSwapTX2(quote, userAddress, swapBlockHash) {
+  async executeSwapTX2(quote, userAddress) {
     try {
       const opsClient = await getOpsClient();
 
@@ -156,48 +155,28 @@ export class SilverbackAnchorService {
       console.log(`   Pool: ${quote.poolAddress.slice(-8)}`);
       console.log(`   Amount In: ${quote.amountInFormatted} ${quote.symbolIn}`);
       console.log(`   Expected Out: ${quote.amountOutFormatted} ${quote.symbolOut}`);
-      console.log(`   Swap block hash: ${swapBlockHash || 'N/A'}`);
+
+      const poolAccount = accountFromAddress(quote.poolAddress);
+      const tokenOutAccount = accountFromAddress(quote.tokenOut);
+      const userAccount = accountFromAddress(userAddress);
 
       // Convert string amounts back to BigInt for blockchain operations
       const amountInBigInt = BigInt(quote.amountIn);
       const amountOutBigInt = BigInt(quote.amountOut);
 
-      // Get the swap request block from the user
-      // For now, we'll use the simpler approach: query recent blocks from user's account
-      const KeetaNet = await import('@keetanetwork/keetanet-client');
-      const userAccount = KeetaNet.lib.Account.fromPublicKeyString(userAddress);
-
-      // Query user's recent history to find the swap request
-      const history = await opsClient.history(userAccount, { limit: 10 });
-
-      // Find the swap request block (should be the most recent)
-      let swapBlock = null;
-      for (const block of history) {
-        if (block.type === 'swap_request' || (swapBlockHash && block.hash.toString('hex') === swapBlockHash)) {
-          swapBlock = block;
-          break;
-        }
-      }
-
-      if (!swapBlock) {
-        throw new Error('Swap request block not found in user history');
-      }
-
-      console.log(`📝 TX2: Accepting swap request...`);
-
-      // TX2: OPS accepts the swap request (pool completes the swap)
-      const acceptResult = await opsClient.acceptSwapRequest(
-        {
-          block: swapBlock,
-          expected: {
-            amount: amountInBigInt,
-            token: quote.tokenIn
-          }
-        },
-        { account: accountFromAddress(quote.poolAddress) }
+      // TX2: OPS sends tokenOut from pool to user
+      // (User has already sent tokenIn to pool via TX1 in frontend)
+      console.log(`📝 TX2: Sending ${quote.amountOutFormatted} ${quote.symbolOut} to user`);
+      const tx2Builder = opsClient.initBuilder();
+      tx2Builder.send(
+        userAccount,
+        amountOutBigInt,
+        tokenOutAccount,
+        undefined,
+        { account: poolAccount }
       );
-
-      console.log(`✅ TX2 swap accepted`);
+      await opsClient.publishBuilder(tx2Builder);
+      console.log(`✅ TX2 completed`);
 
       // Record swap in database
       await this.repository.recordAnchorSwap({

@@ -77,7 +77,7 @@ router.post('/quote', async (req, res) => {
  */
 router.post('/swap', async (req, res) => {
   try {
-    const { quote, userAddress, swapBlockHash } = req.body;
+    const { quote, userAddress } = req.body;
 
     // Validate inputs
     if (!quote || !userAddress) {
@@ -95,13 +95,10 @@ router.post('/swap', async (req, res) => {
     }
 
     console.log(`🔄 Silverback anchor swap TX2 requested by ${userAddress.slice(-8)}`);
-    if (swapBlockHash) {
-      console.log(`   Swap block hash: ${swapBlockHash.slice(0, 16)}...`);
-    }
 
     // Execute TX2 through anchor service
-    // (User has already created swap request in TX1)
-    const result = await anchorService.executeSwapTX2(quote, userAddress, swapBlockHash);
+    // (User has already sent TX1 in the frontend)
+    const result = await anchorService.executeSwapTX2(quote, userAddress);
 
     if (!result.success) {
       return res.status(500).json({
