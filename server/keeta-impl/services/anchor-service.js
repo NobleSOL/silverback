@@ -2,7 +2,7 @@
 // Silverback FX Anchor Service - provides quotes from user-created anchor pools
 
 import { getAnchorRepository } from '../db/anchor-repository.js';
-import { getOpsClient, accountFromAddress, getTokenBalance } from '../utils/client.js';
+import { getOpsClient, accountFromAddress, getTokenBalance, getTreasuryAccount } from '../utils/client.js';
 import { fetchTokenDecimals } from '../utils/client.js';
 
 /**
@@ -13,6 +13,7 @@ export class SilverbackAnchorService {
   constructor() {
     this.repository = getAnchorRepository();
     this.MINIMUM_LIQUIDITY = 1000n; // Min liquidity for quoting (like Uniswap)
+    this.PROTOCOL_FEE_BPS = 5n; // 0.05% protocol fee (5 basis points)
   }
 
   /**
@@ -159,24 +160,48 @@ export class SilverbackAnchorService {
       const poolAccount = accountFromAddress(quote.poolAddress);
       const tokenOutAccount = accountFromAddress(quote.tokenOut);
       const userAccount = accountFromAddress(userAddress);
+      const treasuryAccount = getTreasuryAccount();
 
       // Convert string amounts back to BigInt for blockchain operations
       const amountInBigInt = BigInt(quote.amountIn);
       const amountOutBigInt = BigInt(quote.amountOut);
 
-      // TX2: OPS sends tokenOut from pool to user
+      // Calculate protocol fee (0.05% of output amount)
+      const protocolFee = (amountOutBigInt * this.PROTOCOL_FEE_BPS) / 10000n;
+      const amountToUser = amountOutBigInt - protocolFee;
+
+      console.log(`💰 Protocol fee: ${Number(protocolFee) / Math.pow(10, 9)} ${quote.symbolOut} (0.05%)`);
+      console.log(`📝 TX2: Sending ${Number(amountToUser) / Math.pow(10, 9)} ${quote.symbolOut} to user`);
+
+      // TX2: OPS sends tokenOut from pool - protocol fee to treasury, rest to user
       // (User has already sent tokenIn to pool via TX1 in frontend)
-      console.log(`📝 TX2: Sending ${quote.amountOutFormatted} ${quote.symbolOut} to user`);
       const tx2Builder = opsClient.initBuilder();
+
+      // Send protocol fee to treasury
+      if (protocolFee > 0n) {
+        tx2Builder.send(
+          treasuryAccount,
+          protocolFee,
+          tokenOutAccount,
+          undefined,
+          { account: poolAccount }
+        );
+      }
+
+      // Send remaining amount to user
       tx2Builder.send(
         userAccount,
-        amountOutBigInt,
+        amountToUser,
         tokenOutAccount,
         undefined,
         { account: poolAccount }
       );
+
       await opsClient.publishBuilder(tx2Builder);
-      console.log(`✅ TX2 completed`);
+      console.log(`✅ TX2 completed - protocol fee collected`);
+
+      // Calculate pool creator fee (their fee percentage)
+      const poolCreatorFee = amountInBigInt - (amountInBigInt * (10000n - BigInt(quote.feeBps))) / 10000n;
 
       // Record swap in database
       await this.repository.recordAnchorSwap({
@@ -185,7 +210,8 @@ export class SilverbackAnchorService {
         tokenOut: quote.tokenOut,
         amountIn: amountInBigInt,
         amountOut: amountOutBigInt,
-        feeCollected: amountInBigInt - (amountInBigInt * (10000n - BigInt(quote.feeBps))) / 10000n,
+        feeCollected: poolCreatorFee,
+        protocolFee: protocolFee,
         userAddress,
       });
 

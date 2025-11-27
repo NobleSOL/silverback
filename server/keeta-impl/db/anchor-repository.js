@@ -156,6 +156,7 @@ export class AnchorRepository {
       amountIn,
       amountOut,
       feeCollected,
+      protocolFee,
       txHash,
       blockHeight,
       userAddress,
@@ -164,9 +165,9 @@ export class AnchorRepository {
     const query = `
       INSERT INTO anchor_swaps (
         pool_address, token_in, token_out, amount_in, amount_out,
-        fee_collected, tx_hash, block_height, user_address
+        fee_collected, protocol_fee, tx_hash, block_height, user_address
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
 
@@ -177,6 +178,7 @@ export class AnchorRepository {
       amountIn.toString(),
       amountOut.toString(),
       feeCollected.toString(),
+      protocolFee ? protocolFee.toString() : '0',
       txHash || null,
       blockHeight || null,
       userAddress || null,
