@@ -266,19 +266,52 @@ export async function executeAnchorSwap(
       throw new Error(`Invalid quote: missing amountIn field`);
     }
 
-    console.log('📝 TX1: Sending tokens to pool...');
+    console.log('📝 TX1: Creating swap request...');
     console.log('   Pool address:', quote.poolAddress);
-    console.log('   Amount:', quote.amountIn);
-    console.log('   Token:', quote.tokenIn);
+    console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
+    console.log('   Receiving:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
 
-    // TX1: User sends tokenIn to pool (simple send, not swap request)
-    // Note: This shows as "SEND" in explorer, not "SWAP", but Keythings wallet
-    // doesn't support createSwapRequest() API
-    const tx1Builder = userClient.initBuilder();
-    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
-    await userClient.publishBuilder(tx1Builder);
+    // Import KeetaNet library
+    const KeetaNet = await import('@keetanetwork/keetanet-client');
 
-    console.log('✅ TX1 completed, waiting for finalization...');
+    // Try to create a full UserClient with swap capabilities using Keythings account
+    try {
+      // Get network from environment or default to test
+      const network = import.meta.env.VITE_KEETA_NETWORK || 'test';
+
+      // Create a full UserClient using Keythings account as signer
+      const fullClient = new KeetaNet.lib.UserClient({
+        network: network as 'test' | 'main' | 'staging' | 'dev',
+        signer: userClient.account,
+      });
+
+      // TX1: User creates swap request using full client
+      const swapBlock = await fullClient.createSwapRequest({
+        from: {
+          account: userClient.account,
+          amount: BigInt(quote.amountIn),
+          token: quote.tokenIn
+        },
+        to: {
+          account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
+          amount: BigInt(quote.amountOut),
+          token: quote.tokenOut
+        }
+      });
+
+      console.log('✅ TX1 swap request created using full client');
+      console.log('   Block hash:', swapBlock.hash ? swapBlock.hash.toString('hex') : 'N/A');
+    } catch (swapError) {
+      console.warn('⚠️ Failed to create swap request, falling back to send():', swapError);
+
+      // Fallback to simple send if swap request fails
+      const tx1Builder = userClient.initBuilder();
+      tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+      await userClient.publishBuilder(tx1Builder);
+      console.log('✅ TX1 completed using fallback send()');
+    }
+
+    console.log('⏳ Waiting for finalization...');
 
     // Wait for finalization
     await new Promise(resolve => setTimeout(resolve, 2000));
