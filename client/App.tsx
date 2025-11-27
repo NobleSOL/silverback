@@ -13,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import Pool from "./pages/Pool";
 import Portfolio from "./pages/Portfolio";
 import Header from "./components/layout/Header";
+import Footer from "./components/layout/Footer";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "./wallet/config";
 import { NetworkProvider, useNetwork } from "./contexts/NetworkContext";
@@ -62,10 +63,13 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
-            <Header />
-            {/* Global slippage dialog portal */}
-            <SlippagePortal />
-            <AppContent />
+            <div className="flex flex-col min-h-screen">
+              <Header />
+              {/* Global slippage dialog portal */}
+              <SlippagePortal />
+              <AppContent />
+              <Footer />
+            </div>
           </BrowserRouter>
         </TooltipProvider>
       </NetworkProvider>
