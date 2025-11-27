@@ -271,8 +271,9 @@ export async function executeAnchorSwap(
     console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
     console.log('   Receiving:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
 
-    // Import KeetaNet library
+    // Import KeetaNet library and client modules
     const KeetaNet = await import('@keetanetwork/keetanet-client');
+    const { UserClient } = await import('@keetanetwork/keetanet-client/client');
 
     // Try to create a full UserClient with swap capabilities using Keythings account
     try {
@@ -280,7 +281,7 @@ export async function executeAnchorSwap(
       const network = import.meta.env.VITE_KEETA_NETWORK || 'test';
 
       // Create a full UserClient using Keythings account as signer
-      const fullClient = new KeetaNet.lib.UserClient({
+      const fullClient = new UserClient({
         network: network as 'test' | 'main' | 'staging' | 'dev',
         signer: userClient.account,
       });
