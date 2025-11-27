@@ -1,5 +1,17 @@
 import { Link } from "react-router-dom";
-import { Github, Twitter, FileText, Book } from "lucide-react";
+import { Book } from "lucide-react";
+
+// X (Twitter) icon component
+const XIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+);
 
 export function Footer() {
   const currentYear = new Date().getFullYear();
@@ -62,17 +74,6 @@ export function Footer() {
                   Documentation
                 </a>
               </li>
-              <li>
-                <a
-                  href="https://github.com/NobleSOL/silverback"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
-                >
-                  <Github className="h-4 w-4" />
-                  GitHub
-                </a>
-              </li>
             </ul>
           </div>
 
@@ -82,13 +83,13 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li>
                 <a
-                  href="https://twitter.com/silverbackdefi"
+                  href="https://x.com/silverbackdefi"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
                 >
-                  <Twitter className="h-4 w-4" />
-                  Twitter
+                  <XIcon className="h-4 w-4" />
+                  X
                 </a>
               </li>
             </ul>
@@ -102,7 +103,7 @@ export function Footer() {
           </p>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <a
-              href="https://docs.silverbackdefi.app/terms"
+              href="https://docs.silverbackdefi.app"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
@@ -110,7 +111,7 @@ export function Footer() {
               Terms
             </a>
             <a
-              href="https://docs.silverbackdefi.app/privacy"
+              href="https://docs.silverbackdefi.app"
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-foreground transition-colors"
