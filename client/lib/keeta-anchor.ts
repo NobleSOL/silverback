@@ -274,43 +274,35 @@ export async function executeAnchorSwap(
     // Import KeetaNet library
     const KeetaNet = await import('@keetanetwork/keetanet-client');
 
-    // Try to create a full UserClient with swap capabilities using Keythings account
+    // Create swap request using builder pattern (same as FX Anchor SDK)
+    // This creates a proper SWAP block instead of SEND block
     try {
-      // Get network from environment or default to test
-      const network = import.meta.env.VITE_KEETA_NETWORK || 'test';
+      const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress);
+      const tokenInAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenIn);
+      const tokenOutAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenOut);
 
-      // Access UserClient from main package export
-      // Try multiple possible export paths
-      const UserClient = KeetaNet.UserClient || KeetaNet.client?.UserClient || KeetaNet.default?.UserClient;
+      // Build swap request: send tokenIn, receive tokenOut
+      const tx1Builder = userClient.initBuilder();
 
-      if (!UserClient) {
-        throw new Error('UserClient not found in KeetaNet package exports');
-      }
+      // Send tokens to pool
+      tx1Builder.send(
+        poolAccount,
+        BigInt(quote.amountIn),
+        tokenInAccount
+      );
 
-      // Create a full UserClient using Keythings account as signer
-      const fullClient = new UserClient({
-        network: network as 'test' | 'main' | 'staging' | 'dev',
-        signer: userClient.account,
-      });
+      // Request to receive tokens from pool (creates swap request)
+      tx1Builder.receive(
+        poolAccount,
+        BigInt(quote.amountOut),
+        tokenOutAccount,
+        true  // enforceable = true (required for swap requests)
+      );
 
-      // TX1: User creates swap request using full client
-      const swapBlock = await fullClient.createSwapRequest({
-        from: {
-          account: userClient.account,
-          amount: BigInt(quote.amountIn),
-          token: quote.tokenIn
-        },
-        to: {
-          account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
-          amount: BigInt(quote.amountOut),
-          token: quote.tokenOut
-        }
-      });
-
-      console.log('✅ TX1 swap request created using full client');
-      console.log('   Block hash:', swapBlock.hash ? swapBlock.hash.toString('hex') : 'N/A');
+      await userClient.publishBuilder(tx1Builder);
+      console.log('✅ TX1 swap request created using builder.receive()');
     } catch (swapError) {
-      console.warn('⚠️ Failed to create swap request, falling back to send():', swapError);
+      console.warn('⚠️ Failed to create swap request with receive():', swapError);
 
       // Fallback to simple send if swap request fails
       const tx1Builder = userClient.initBuilder();
