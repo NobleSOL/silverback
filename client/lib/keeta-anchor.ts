@@ -266,34 +266,44 @@ export async function executeAnchorSwap(
       throw new Error(`Invalid quote: missing amountIn field`);
     }
 
-    console.log('📝 TX1: Sending tokens to pool...');
+    console.log('📝 TX1: Creating swap request...');
     console.log('   Pool address:', quote.poolAddress);
-    console.log('   Amount:', quote.amountIn);
-    console.log('   Token:', quote.tokenIn);
+    console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
+    console.log('   Receiving:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
 
-    // TX1: User sends tokenIn to pool (same pattern as Index.tsx swap)
-    const tx1Builder = userClient.initBuilder();
+    // Import KeetaNet library
+    const KeetaNet = await import('@keetanetwork/keetanet-client');
 
-    // Send to pool - pass token address as STRING (not Account object)
-    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+    // TX1: User creates swap request using SDK method
+    const swapBlock = await userClient.createSwapRequest({
+      from: {
+        account: userClient.account,
+        amount: BigInt(quote.amountIn),
+        token: quote.tokenIn
+      },
+      to: {
+        account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
+        amount: BigInt(quote.amountOut),
+        token: quote.tokenOut
+      }
+    });
 
-    console.log('✅ TX1 built, publishing...');
-    await userClient.publishBuilder(tx1Builder);
-
-    console.log('✅ TX1 completed, waiting for finalization...');
+    console.log('✅ TX1 swap request created');
+    console.log('   Block hash:', swapBlock.hash ? swapBlock.hash.toString('hex') : 'N/A');
 
     // Wait for finalization
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    console.log('📝 TX2: Requesting backend to send tokens from pool...');
+    console.log('📝 TX2: Requesting backend to accept swap...');
 
-    // TX2: Call backend to complete the swap
+    // TX2: Call backend to accept the swap
     const response = await fetch(`${API_BASE}/anchor/swap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         quote,
         userAddress,
+        swapBlockHash: swapBlock.hash ? swapBlock.hash.toString('hex') : null,
       }),
     });
 
