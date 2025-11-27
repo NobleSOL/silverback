@@ -256,12 +256,34 @@ export async function executeAnchorSwap(
 
     const quote = anchorQuote.rawQuote;
 
+    // Debug logging
+    console.log('🔍 Quote structure:', {
+      hasTokenIn: !!quote?.tokenIn,
+      hasPoolAddress: !!quote?.poolAddress,
+      hasAmountIn: !!quote?.amountIn,
+      tokenIn: quote?.tokenIn,
+      poolAddress: quote?.poolAddress,
+    });
+
+    if (!quote?.tokenIn) {
+      throw new Error('Invalid quote: missing tokenIn field');
+    }
+    if (!quote?.poolAddress) {
+      throw new Error('Invalid quote: missing poolAddress field');
+    }
+    if (!quote?.amountIn) {
+      throw new Error('Invalid quote: missing amountIn field');
+    }
+
     console.log('📝 TX1: Sending tokens to pool...');
 
     // TX1: User sends tokenIn to pool
     // Import KeetaNet for account creation (dynamic import like Pool.tsx)
     const KeetaNetDynamic = await import('@keetanetwork/keetanet-client');
+
+    console.log('🔍 Creating Account from:', quote.tokenIn);
     const tokenInAccount = KeetaNetDynamic.lib.Account.fromPublicKeyString(quote.tokenIn);
+    console.log('✅ Token account created:', tokenInAccount ? 'success' : 'FAILED');
 
     const tx1Builder = userClient.initBuilder();
     tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
