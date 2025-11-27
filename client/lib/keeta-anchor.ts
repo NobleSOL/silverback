@@ -293,17 +293,18 @@ export async function executeAnchorSwap(
     console.log('   Amount:', quote.amountIn);
     console.log('   Token:', quote.tokenIn);
 
+    // Import KeetaNet and create Account object (exact same pattern as Pool.tsx)
+    const KeetaNet = await import('@keetanetwork/keetanet-client');
+    const tokenInAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenIn);
+
+    console.log('✅ Token Account created:', tokenInAccount ? 'success' : 'FAILED');
+
     // TX1: User sends tokenIn to pool
-    // Pass token address as string (like Index.tsx does)
     const tx1Builder = userClient.initBuilder();
 
-    console.log('🔧 Calling send() with:', {
-      to: quote.poolAddress,
-      amount: BigInt(quote.amountIn).toString(),
-      token: quote.tokenIn,
-    });
+    console.log('🔧 Calling send() with Account object (like Pool.tsx does)');
 
-    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
 
     console.log('✅ send() call completed, publishing builder...');
     await userClient.publishBuilder(tx1Builder);
