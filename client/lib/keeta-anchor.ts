@@ -256,36 +256,14 @@ export async function executeAnchorSwap(
 
     const quote = anchorQuote.rawQuote;
 
-    // Debug logging - FULL quote structure
-    console.log('🔍 FULL Quote object:', JSON.stringify(quote, null, 2));
-    console.log('🔍 Quote validation:', {
-      hasTokenIn: !!quote?.tokenIn,
-      hasPoolAddress: !!quote?.poolAddress,
-      hasAmountIn: !!quote?.amountIn,
-      tokenInValue: quote?.tokenIn,
-      tokenInType: typeof quote?.tokenIn,
-      poolAddressValue: quote?.poolAddress,
-      poolAddressType: typeof quote?.poolAddress,
-      amountInValue: quote?.amountIn,
-      amountInType: typeof quote?.amountIn,
-    });
-
     if (!quote?.tokenIn) {
-      throw new Error(`Invalid quote: missing tokenIn field. Quote: ${JSON.stringify(quote)}`);
+      throw new Error(`Invalid quote: missing tokenIn field`);
     }
     if (!quote?.poolAddress) {
-      throw new Error(`Invalid quote: missing poolAddress field. Quote: ${JSON.stringify(quote)}`);
+      throw new Error(`Invalid quote: missing poolAddress field`);
     }
     if (!quote?.amountIn) {
-      throw new Error(`Invalid quote: missing amountIn field. Quote: ${JSON.stringify(quote)}`);
-    }
-
-    // Validate types
-    if (typeof quote.tokenIn !== 'string') {
-      throw new Error(`tokenIn must be string, got ${typeof quote.tokenIn}: ${quote.tokenIn}`);
-    }
-    if (typeof quote.poolAddress !== 'string') {
-      throw new Error(`poolAddress must be string, got ${typeof quote.poolAddress}: ${quote.poolAddress}`);
+      throw new Error(`Invalid quote: missing amountIn field`);
     }
 
     console.log('📝 TX1: Sending tokens to pool...');
@@ -293,20 +271,13 @@ export async function executeAnchorSwap(
     console.log('   Amount:', quote.amountIn);
     console.log('   Token:', quote.tokenIn);
 
-    // Import KeetaNet and create Account object (exact same pattern as Pool.tsx)
-    const KeetaNet = await import('@keetanetwork/keetanet-client');
-    const tokenInAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.tokenIn);
-
-    console.log('✅ Token Account created:', tokenInAccount ? 'success' : 'FAILED');
-
-    // TX1: User sends tokenIn to pool
+    // TX1: User sends tokenIn to pool (same pattern as Index.tsx swap)
     const tx1Builder = userClient.initBuilder();
 
-    console.log('🔧 Calling send() with Account object (like Pool.tsx does)');
+    // Send to pool - pass token address as STRING (not Account object)
+    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
 
-    tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), tokenInAccount);
-
-    console.log('✅ send() call completed, publishing builder...');
+    console.log('✅ TX1 built, publishing...');
     await userClient.publishBuilder(tx1Builder);
 
     console.log('✅ TX1 completed, waiting for finalization...');

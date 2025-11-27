@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keeta-anchor";
-import { createKeetaClientFromSeed } from "@/lib/keeta-client";
 import QuickFill from "@/components/shared/QuickFill";
 import TokenLogo from "@/components/shared/TokenLogo";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
@@ -127,8 +126,16 @@ export default function KeetaAnchor() {
 
     setExecuting(true);
     try {
-      // Create user client for Silverback swaps
-      const userClient = createKeetaClientFromSeed(wallet.seed, wallet.accountIndex || 0);
+      // Import Keythings provider helper
+      const { getKeythingsProvider } = await import("@/lib/keythings-provider");
+
+      // Get user client from Keythings provider (same pattern as Index.tsx)
+      const provider = getKeythingsProvider();
+      if (!provider) {
+        throw new Error("Keythings provider not found");
+      }
+
+      const userClient = await provider.getUserClient();
 
       // Execute swap with user client and address
       const result = await executeAnchorSwap(selectedQuote, userClient, wallet.address);
