@@ -86,10 +86,10 @@ export function Footer() {
                   href="https://x.com/silverbackdefi"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Follow us on X"
                 >
                   <XIcon className="h-4 w-4" />
-                  X
                 </a>
               </li>
             </ul>
