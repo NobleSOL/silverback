@@ -274,19 +274,23 @@ export async function executeAnchorSwap(
     // Import KeetaNet library
     const KeetaNet = await import('@keetanetwork/keetanet-client');
 
-    // TX1: User creates swap request using SDK method
-    const swapBlock = await userClient.createSwapRequest({
-      from: {
-        account: userClient.account,
-        amount: BigInt(quote.amountIn),
-        token: quote.tokenIn
+    // TX1: User creates swap request using SDK static method
+    // (Keythings userClient doesn't have instance method, use static)
+    const swapBlock = await KeetaNet.lib.UserClient.createSwapRequest(
+      {
+        from: {
+          account: userClient.account,
+          amount: BigInt(quote.amountIn),
+          token: quote.tokenIn
+        },
+        to: {
+          account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
+          amount: BigInt(quote.amountOut),
+          token: quote.tokenOut
+        }
       },
-      to: {
-        account: KeetaNet.lib.Account.fromPublicKeyString(quote.poolAddress),
-        amount: BigInt(quote.amountOut),
-        token: quote.tokenOut
-      }
-    });
+      userClient
+    );
 
     console.log('✅ TX1 swap request created');
     console.log('   Block hash:', swapBlock.hash ? swapBlock.hash.toString('hex') : 'N/A');
