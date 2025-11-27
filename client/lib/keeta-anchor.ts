@@ -40,7 +40,15 @@ export type AnchorEstimate = {
  * Initialize FX Anchor client
  */
 export function createFXClient(userClient: any, config?: any): any {
-  return new FX.Client(userClient, config);
+  // FX Anchor SDK requires network to be specified
+  const network = import.meta.env.VITE_KEETA_NETWORK || 'test';
+
+  const fxConfig = {
+    ...config,
+    network: network as 'test' | 'main' | 'staging' | 'dev',
+  };
+
+  return new FX.Client(userClient, fxConfig);
 }
 
 /**
