@@ -256,31 +256,56 @@ export async function executeAnchorSwap(
 
     const quote = anchorQuote.rawQuote;
 
-    // Debug logging
-    console.log('🔍 Quote structure:', {
+    // Debug logging - FULL quote structure
+    console.log('🔍 FULL Quote object:', JSON.stringify(quote, null, 2));
+    console.log('🔍 Quote validation:', {
       hasTokenIn: !!quote?.tokenIn,
       hasPoolAddress: !!quote?.poolAddress,
       hasAmountIn: !!quote?.amountIn,
-      tokenIn: quote?.tokenIn,
-      poolAddress: quote?.poolAddress,
+      tokenInValue: quote?.tokenIn,
+      tokenInType: typeof quote?.tokenIn,
+      poolAddressValue: quote?.poolAddress,
+      poolAddressType: typeof quote?.poolAddress,
+      amountInValue: quote?.amountIn,
+      amountInType: typeof quote?.amountIn,
     });
 
     if (!quote?.tokenIn) {
-      throw new Error('Invalid quote: missing tokenIn field');
+      throw new Error(`Invalid quote: missing tokenIn field. Quote: ${JSON.stringify(quote)}`);
     }
     if (!quote?.poolAddress) {
-      throw new Error('Invalid quote: missing poolAddress field');
+      throw new Error(`Invalid quote: missing poolAddress field. Quote: ${JSON.stringify(quote)}`);
     }
     if (!quote?.amountIn) {
-      throw new Error('Invalid quote: missing amountIn field');
+      throw new Error(`Invalid quote: missing amountIn field. Quote: ${JSON.stringify(quote)}`);
+    }
+
+    // Validate types
+    if (typeof quote.tokenIn !== 'string') {
+      throw new Error(`tokenIn must be string, got ${typeof quote.tokenIn}: ${quote.tokenIn}`);
+    }
+    if (typeof quote.poolAddress !== 'string') {
+      throw new Error(`poolAddress must be string, got ${typeof quote.poolAddress}: ${quote.poolAddress}`);
     }
 
     console.log('📝 TX1: Sending tokens to pool...');
+    console.log('   Pool address:', quote.poolAddress);
+    console.log('   Amount:', quote.amountIn);
+    console.log('   Token:', quote.tokenIn);
 
     // TX1: User sends tokenIn to pool
-    // Pass token address as string (like Index.tsx does - both patterns work)
+    // Pass token address as string (like Index.tsx does)
     const tx1Builder = userClient.initBuilder();
+
+    console.log('🔧 Calling send() with:', {
+      to: quote.poolAddress,
+      amount: BigInt(quote.amountIn).toString(),
+      token: quote.tokenIn,
+    });
+
     tx1Builder.send(quote.poolAddress, BigInt(quote.amountIn), quote.tokenIn);
+
+    console.log('✅ send() call completed, publishing builder...');
     await userClient.publishBuilder(tx1Builder);
 
     console.log('✅ TX1 completed, waiting for finalization...');
