@@ -7,7 +7,7 @@ import { getSilverbackFXAnchorRoutes } from "./keeta-impl/services/fx-anchor-ser
 export async function createServer() {
   const app = express();
 
-  // CORS configuration - Allow Vercel frontend and development
+  // CORS configuration - Allow Vercel frontend, Keythings wallet, and development
   const corsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       // Allow requests with no origin (like mobile apps, curl, Postman)
@@ -24,6 +24,13 @@ export async function createServer() {
 
       // Allow production domain
       if (origin.includes('silverbackdefi.app')) return callback(null, true);
+
+      // Allow Keythings wallet and Keeta domains (for FX anchor integration)
+      if (origin.includes('keythings')) return callback(null, true);
+      if (origin.includes('keeta')) return callback(null, true);
+
+      // Allow Chrome extensions (Keythings wallet)
+      if (origin.startsWith('chrome-extension://')) return callback(null, true);
 
       // Reject all other origins
       callback(new Error('Not allowed by CORS'));

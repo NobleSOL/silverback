@@ -2,8 +2,8 @@ import 'dotenv/config';
 import * as KeetaNet from '@keetanetwork/keetanet-client';
 
 const ACCOUNTS = [
-  { name: 'Working (2hr)', addr: 'keeta_atkceaeuwehunyzmp5vzvjbgxy6orsisfenafd455y5ehiwzhe4hqvlpazyim' },
-  { name: 'Broken (new)', addr: 'keeta_aqqhqfbgt2v4ie445odoppu2m7fqzjkn7irnp6jejz766yamkx4553445e4lo' }
+  { name: 'NEW RESOLVER', addr: 'keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm' },
+  { name: 'Old (2hr)', addr: 'keeta_atkceaeuwehunyzmp5vzvjbgxy6orsisfenafd455y5ehiwzhe4hqvlpazyim' }
 ];
 
 async function check() {
