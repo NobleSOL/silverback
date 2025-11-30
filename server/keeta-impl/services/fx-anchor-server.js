@@ -382,9 +382,16 @@ export async function getSilverbackFXAnchorRoutes() {
         // Create Express-compatible handler
         const expressHandler = async (req, res) => {
           try {
+            console.log(`🔍 FX Request to ${routePattern}:`, {
+              body: req.body,
+              params: req.params,
+              query: req.query
+            });
+
             // Convert Express request to SDK format
             const urlParams = new Map(Object.entries(req.params));
-            const postData = req.body;
+            // SDK expects { request: {...} } format, not raw body
+            const postData = req.body?.request ? req.body : { request: req.body };
             const requestHeaders = req.headers;
             const requestUrl = new URL(req.originalUrl, `http://${req.headers.host}`);
 
