@@ -11,6 +11,39 @@ import * as KeetaNet from '@keetanetwork/keetanet-client';
 const PROTOCOL_FEE_BPS = 5n;
 
 /**
+ * Ensure fee sweep columns exist in database
+ */
+async function ensureColumns(repository) {
+  const pool = repository.pool;
+
+  try {
+    // Add fee_swept column if missing
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name = 'anchor_swaps' AND column_name = 'fee_swept') THEN
+          ALTER TABLE anchor_swaps ADD COLUMN fee_swept BOOLEAN DEFAULT false;
+        END IF;
+      END $$;
+    `);
+
+    // Add fee_swept_at column if missing
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name = 'anchor_swaps' AND column_name = 'fee_swept_at') THEN
+          ALTER TABLE anchor_swaps ADD COLUMN fee_swept_at TIMESTAMP;
+        END IF;
+      END $$;
+    `);
+  } catch (err) {
+    console.warn('Note: Could not verify columns:', err.message);
+  }
+}
+
+/**
  * Sweep accumulated protocol fees from all pools to treasury
  *
  * How it works:
@@ -30,6 +63,9 @@ export async function sweepProtocolFees() {
     const opsClient = await getOpsClient();
     const treasuryAccount = getTreasuryAccount();
     const repository = getAnchorRepository();
+
+    // Ensure fee sweep columns exist
+    await ensureColumns(repository);
 
     console.log(`Treasury: ${treasuryAccount.publicKeyString.get()}`);
     console.log('');
