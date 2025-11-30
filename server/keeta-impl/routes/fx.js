@@ -45,7 +45,6 @@ router.post('/api/getQuote', async (req, res) => {
       return res.status(404).json({ error: 'No pool available for this conversion' });
     }
 
-    const poolAccount = accountFromAddress(quote.poolAddress);
     const amountOut = BigInt(quote.amountOut);
 
     // Calculate protocol fee (0.05%)
@@ -55,13 +54,13 @@ router.post('/api/getQuote', async (req, res) => {
     // Pool creator fee
     const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
 
-    // Build unsigned quote
+    // Build unsigned quote (use string addresses directly - SDK format)
     const unsignedQuote = {
       request: conversion,
-      account: poolAccount.publicKeyString.get(),
+      account: quote.poolAddress,
       convertedAmount: amountToUser.toString(),
       cost: {
-        token: accountFromAddress(tokenIn).publicKeyString.get(),
+        token: tokenIn,
         amount: poolCreatorFee.toString()
       }
     };
@@ -133,7 +132,7 @@ router.post('/api/getEstimate', async (req, res) => {
         expectedCost: {
           min: poolCreatorFee.toString(),
           max: poolCreatorFee.toString(),
-          token: accountFromAddress(tokenIn).publicKeyString.get()
+          token: tokenIn
         }
       }
     });
