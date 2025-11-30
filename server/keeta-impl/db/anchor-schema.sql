@@ -69,6 +69,10 @@ CREATE TABLE IF NOT EXISTS anchor_swaps (
   fee_collected VARCHAR(255) NOT NULL,  -- Fee collected by pool creator
   protocol_fee VARCHAR(255) DEFAULT '0',  -- Protocol fee (0.05%) collected by Silverback
 
+  -- Fee sweep tracking
+  fee_swept BOOLEAN DEFAULT false,        -- Has this swap's fee been swept to treasury?
+  fee_swept_at TIMESTAMP,                 -- When was the fee swept?
+
   -- Transaction info
   tx_hash VARCHAR(255),  -- Keeta transaction hash
   block_height BIGINT,   -- Block number
