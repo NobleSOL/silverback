@@ -100,12 +100,15 @@ router.post('/api/getQuote', async (req, res) => {
  */
 router.post('/api/getEstimate', async (req, res) => {
   try {
+    console.log('📊 /api/getEstimate called:', JSON.stringify(req.body));
     const { request: conversion } = req.body;
 
     if (!conversion) {
+      console.log('❌ Missing conversion in request body');
       return res.status(400).json({ error: 'Missing request in body' });
     }
 
+    console.log('🔍 Getting anchor service...');
     const anchorService = getSilverbackAnchorService();
 
     // Get quote from Silverback pools
@@ -113,17 +116,21 @@ router.post('/api/getEstimate', async (req, res) => {
     const tokenOut = conversion.to;
     const amountIn = BigInt(conversion.amount);
 
+    console.log(`📊 Getting quote: ${tokenIn.slice(0,20)}... → ${tokenOut.slice(0,20)}..., amount: ${amountIn}`);
     const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
+    console.log('✅ Quote received:', quote ? 'success' : 'null');
 
     if (!quote) {
       return res.status(404).json({ error: 'No pool available for this conversion' });
     }
 
+    console.log('💰 Calculating amounts...');
     const amountOut = BigInt(quote.amountOut);
     const protocolFee = (amountOut * anchorService.PROTOCOL_FEE_BPS) / 10000n;
     const amountToUser = amountOut - protocolFee;
     const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
 
+    console.log('📤 Sending response...');
     res.json({
       ok: true,
       estimate: {
@@ -136,9 +143,11 @@ router.post('/api/getEstimate', async (req, res) => {
         }
       }
     });
+    console.log('✅ Response sent successfully');
   } catch (error) {
     console.error('❌ /api/getEstimate error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
