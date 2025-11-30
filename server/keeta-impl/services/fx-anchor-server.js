@@ -31,8 +31,9 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
     // Pool accounts - function that returns the pool for a given conversion
     account: async (request) => {
       try {
-        const tokenIn = request.from.publicKeyString.get();
-        const tokenOut = request.to.publicKeyString.get();
+        // request.from and request.to are already string addresses
+        const tokenIn = request.from;
+        const tokenOut = request.to;
         const amountIn = request.amount;
 
         // Get quote to find best pool
@@ -114,8 +115,9 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
        */
       getConversionRateAndFee: async (request) => {
         try {
-          const tokenIn = request.from.publicKeyString.get();
-          const tokenOut = request.to.publicKeyString.get();
+          // request.from and request.to are already string addresses
+          const tokenIn = request.from;
+          const tokenOut = request.to;
           const amountIn = request.amount;
 
           console.log(`📊 FX SDK Quote Request: ${Number(amountIn) / 1e9} tokens`);
@@ -230,8 +232,9 @@ export async function getSilverbackFXAnchorRoutes() {
       client: opsClient,
       account: async (request) => {
         try {
-          const tokenIn = request.from.publicKeyString.get();
-          const tokenOut = request.to.publicKeyString.get();
+          // request.from and request.to are already string addresses
+          const tokenIn = request.from;
+          const tokenOut = request.to;
           const amountIn = request.amount;
 
           const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
@@ -293,8 +296,9 @@ export async function getSilverbackFXAnchorRoutes() {
         },
         getConversionRateAndFee: async (request) => {
           try {
-            const tokenIn = request.from.publicKeyString.get();
-            const tokenOut = request.to.publicKeyString.get();
+            // request.from and request.to are already string addresses
+            const tokenIn = request.from;
+            const tokenOut = request.to;
             const amountIn = request.amount;
 
             const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
