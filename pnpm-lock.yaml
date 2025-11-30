@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@keetanetwork/anchor':
-        specifier: ^0.0.22
-        version: 0.0.22(@types/node@24.10.1)(typescript@5.9.3)
+        specifier: ^0.0.25
+        version: 0.0.25(@types/node@24.10.1)(typescript@5.9.3)
       '@keetanetwork/keetanet-client':
         specifier: ^0.14.11
         version: 0.14.11
@@ -814,8 +814,8 @@ packages:
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
-  '@keetanetwork/anchor@0.0.22':
-    resolution: {integrity: sha512-dfhygqVwFHvcjL2CO548EzndUncSeISdoX+scrqZ4t8azxjPT6F8IYaiOZJg/GvfR9BHfzzvDP1c6fxOCt0vxw==}
+  '@keetanetwork/anchor@0.0.25':
+    resolution: {integrity: sha512-Irlwpkpl0O7kEEu1A2ktcTRaXS8YJt2d4lKMfASpEqvR/gosSgGK+92waKCH3d9jr8VwHZkTVqWIV3YzKwow9Q==}
     engines: {node: 20.18.0}
 
   '@keetanetwork/asn1-napi-rs@1.2.0':
@@ -7465,7 +7465,7 @@ snapshots:
   '@js-sdsl/ordered-map@4.4.2':
     optional: true
 
-  '@keetanetwork/anchor@0.0.22(@types/node@24.10.1)(typescript@5.9.3)':
+  '@keetanetwork/anchor@0.0.25(@types/node@24.10.1)(typescript@5.9.3)':
     dependencies:
       '@keetanetwork/currency-info': 1.2.5
       '@keetanetwork/keetanet-client': 0.14.12

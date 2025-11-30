@@ -2,7 +2,8 @@ import path from "path";
 import { createServer } from "./index";
 import * as express from "express";
 
-const app = createServer();
+// createServer is now async, so we need to await it
+const app = await createServer();
 const port = process.env.PORT || 3000;
 
 // In production, serve the built SPA files
@@ -15,8 +16,8 @@ app.use(express.static(distPath));
 // Handle React Router - serve index.html for all non-API routes
 // Express 5 uses middleware instead of wildcard routes
 app.use((req, res, next) => {
-  // Don't serve index.html for API routes
-  if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
+  // Don't serve index.html for API routes or FX routes
+  if (req.path.startsWith("/api/") || req.path.startsWith("/fx/") || req.path.startsWith("/health")) {
     return next();
   }
 
@@ -28,6 +29,7 @@ app.listen(port, async () => {
   console.log(`🚀 Fusion Starter server running on port ${port}`);
   console.log(`📱 Frontend: http://localhost:${port}`);
   console.log(`🔧 API: http://localhost:${port}/api`);
+  console.log(`🔗 FX Anchor: http://localhost:${port}/fx`);
 
   // Start snapshot recorder for APY/volume calculation
   console.log('\n📸 Starting pool snapshot recorder...');
@@ -54,19 +56,6 @@ app.listen(port, async () => {
   }, HOUR_MS);
 
   console.log(`⏰ Snapshot recorder scheduled (every hour)\n`);
-
-  // Start FX Anchor Server for Silverback pools
-  console.log('🔗 Starting Silverback FX Anchor Server...');
-  try {
-    const { startSilverbackFXAnchorServer } = await import('./keeta-impl/services/fx-anchor-server.js');
-    const fxPort = process.env.FX_ANCHOR_PORT || 3001;
-    await startSilverbackFXAnchorServer(Number(fxPort));
-    console.log(`✅ FX Anchor Server running on port ${fxPort}`);
-    console.log(`   Silverback pools now discoverable via FX resolver\n`);
-  } catch (error) {
-    console.error('⚠️  FX Anchor Server failed to start:', error.message);
-    console.log('   Silverback pools still accessible via /api/anchor endpoints\n');
-  }
 });
 
 // Graceful shutdown
