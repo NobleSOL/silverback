@@ -5,6 +5,68 @@
 import { KeetaNetFXAnchorHTTPServer } from '@keetanetwork/anchor/services/fx/server.js';
 import { getOpsClient, getTreasuryAccount, accountFromAddress } from '../utils/client.js';
 import { getSilverbackAnchorService } from './anchor-service.js';
+import { getAnchorRepository } from '../db/anchor-repository.js';
+
+/**
+ * Record an FX swap to the database for fee tracking
+ * Called after createExchange succeeds
+ */
+async function recordFXSwap(postData, result, anchorService) {
+  try {
+    // Parse the request data
+    const request = postData?.request || postData;
+    const { from: tokenIn, to: tokenOut, amount, affinity } = request;
+
+    if (!tokenIn || !tokenOut || !amount) {
+      console.log('⚠️ Cannot record swap - missing request data');
+      return;
+    }
+
+    // Parse the result to get exchange details
+    let exchange;
+    try {
+      const output = typeof result.output === 'string' ? JSON.parse(result.output) : result.output;
+      exchange = output?.exchange || output;
+    } catch (e) {
+      console.log('⚠️ Cannot parse exchange result');
+      return;
+    }
+
+    // Get quote to find pool details
+    const amountIn = BigInt(amount);
+    const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
+
+    if (!quote) {
+      console.log('⚠️ Cannot find pool for swap recording');
+      return;
+    }
+
+    // Calculate amounts
+    const amountOutBigInt = BigInt(quote.amountOut);
+    const protocolFee = (amountOutBigInt * anchorService.PROTOCOL_FEE_BPS) / 10000n;
+    const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
+
+    // Record to database
+    const repository = getAnchorRepository();
+    await repository.recordAnchorSwap({
+      poolAddress: quote.poolAddress,
+      tokenIn: tokenIn,
+      tokenOut: tokenOut,
+      amountIn: amountIn,
+      amountOut: amountOutBigInt,
+      feeCollected: poolCreatorFee,
+      protocolFee: protocolFee,
+      userAddress: exchange?.user || 'fx-sdk-user',
+      txHash: exchange?.id || null,
+    });
+
+    console.log(`✅ FX Swap recorded: ${quote.amountInFormatted} → ${quote.amountOutFormatted}`);
+    console.log(`   Pool: ${quote.poolAddress.slice(-12)}`);
+    console.log(`   Protocol fee: ${Number(protocolFee) / 1e9} (0.05%)`);
+  } catch (error) {
+    console.error('❌ Error recording FX swap:', error.message);
+  }
+}
 
 /**
  * Create and start FX Anchor HTTP Server for Silverback
@@ -419,6 +481,15 @@ export async function getSilverbackFXAnchorRoutes() {
             // Call SDK handler
             const handlerFn = typeof handler === 'function' ? handler : handler.handler;
             const result = await handlerFn(urlParams, postData, requestHeaders, requestUrl);
+
+            // Record swap after successful createExchange
+            if (path === '/api/createExchange' && result.statusCode !== 500) {
+              try {
+                await recordFXSwap(postData, result, anchorService);
+              } catch (recordError) {
+                console.error('⚠️ Failed to record swap (swap still succeeded):', recordError.message);
+              }
+            }
 
             // Send response
             if (result.statusCode) {
