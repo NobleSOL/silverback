@@ -29,6 +29,16 @@ export class SilverbackAnchorService {
    */
   async getQuote(tokenIn, tokenOut, amountIn, decimalsIn, decimalsOut) {
     try {
+      console.log('🔎 getQuote called:', {
+        tokenIn,
+        tokenInType: typeof tokenIn,
+        tokenOut,
+        tokenOutType: typeof tokenOut,
+        amountIn,
+        decimalsIn,
+        decimalsOut
+      });
+
       // Find all active anchor pools for this token pair
       const pools = await this.repository.getAnchorPoolByPairKey(tokenIn, tokenOut);
 

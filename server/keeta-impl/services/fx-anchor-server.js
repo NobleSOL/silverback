@@ -31,6 +31,14 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
     // Pool accounts - function that returns the pool for a given conversion
     account: async (request) => {
       try {
+        console.log('🔍 FX SDK account() request:', {
+          from: request.from,
+          fromType: typeof request.from,
+          to: request.to,
+          toType: typeof request.to,
+          amount: request.amount
+        });
+
         // request.from and request.to are already string addresses
         const tokenIn = request.from;
         const tokenOut = request.to;
@@ -115,6 +123,14 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
        */
       getConversionRateAndFee: async (request) => {
         try {
+          console.log('🔍 FX SDK getConversionRateAndFee() request:', {
+            from: request.from,
+            fromType: typeof request.from,
+            to: request.to,
+            toType: typeof request.to,
+            amount: request.amount
+          });
+
           // request.from and request.to are already string addresses
           const tokenIn = request.from;
           const tokenOut = request.to;
