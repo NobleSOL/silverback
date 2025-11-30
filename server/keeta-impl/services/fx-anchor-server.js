@@ -13,12 +13,16 @@ import { getAnchorRepository } from '../db/anchor-repository.js';
  */
 async function recordFXSwap(postData, result, anchorService) {
   try {
+    console.log('📝 recordFXSwap called with postData:', JSON.stringify(postData, null, 2));
+
     // Parse the request data
     const request = postData?.request || postData;
     const { from: tokenIn, to: tokenOut, amount, affinity } = request;
 
+    console.log('📝 Parsed request:', { tokenIn: tokenIn?.slice(0, 20), tokenOut: tokenOut?.slice(0, 20), amount, affinity });
+
     if (!tokenIn || !tokenOut || !amount) {
-      console.log('⚠️ Cannot record swap - missing request data');
+      console.log('⚠️ Cannot record swap - missing request data:', { tokenIn: !!tokenIn, tokenOut: !!tokenOut, amount: !!amount });
       return;
     }
 
@@ -483,11 +487,17 @@ export async function getSilverbackFXAnchorRoutes() {
             const result = await handlerFn(urlParams, postData, requestHeaders, requestUrl);
 
             // Record swap after successful createExchange
-            if (path === '/api/createExchange' && result.statusCode !== 500) {
-              try {
-                await recordFXSwap(postData, result, anchorService);
-              } catch (recordError) {
-                console.error('⚠️ Failed to record swap (swap still succeeded):', recordError.message);
+            const isCreateExchange = path === '/api/createExchange' || routePattern.includes('createExchange');
+            const isSuccess = !result.statusCode || result.statusCode < 400;
+
+            if (isCreateExchange) {
+              console.log(`📝 createExchange detected - path: ${path}, statusCode: ${result.statusCode}, isSuccess: ${isSuccess}`);
+              if (isSuccess) {
+                try {
+                  await recordFXSwap(postData, result, anchorService);
+                } catch (recordError) {
+                  console.error('⚠️ Failed to record swap (swap still succeeded):', recordError.message);
+                }
               }
             }
 
