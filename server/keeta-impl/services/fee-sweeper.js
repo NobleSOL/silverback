@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { getOpsClient, getTreasuryAccount, accountFromAddress, getTokenBalance } from '../utils/client.js';
 import { getAnchorRepository } from '../db/anchor-repository.js';
+import { getDbPool } from '../db/client.js';
 import * as KeetaNet from '@keetanetwork/keetanet-client';
 
 // Protocol fee: 0.05% (5 basis points)
@@ -13,8 +14,8 @@ const PROTOCOL_FEE_BPS = 5n;
 /**
  * Ensure fee sweep columns exist in database
  */
-async function ensureColumns(repository) {
-  const pool = repository.pool;
+async function ensureColumns() {
+  const pool = getDbPool();
 
   try {
     // Add fee_swept column if missing
@@ -65,7 +66,7 @@ export async function sweepProtocolFees() {
     const repository = getAnchorRepository();
 
     // Ensure fee sweep columns exist
-    await ensureColumns(repository);
+    await ensureColumns();
 
     console.log(`Treasury: ${treasuryAccount.publicKeyString.get()}`);
     console.log('');
@@ -90,7 +91,7 @@ export async function sweepProtocolFees() {
 
       try {
         // Get unswept fees for this pool
-        const unsweptFees = await getUnsweptFees(repository, pool.pool_address);
+        const unsweptFees = await getUnsweptFees(pool.pool_address);
 
         if (unsweptFees.length === 0) {
           console.log('  No unswept fees');
@@ -145,7 +146,7 @@ export async function sweepProtocolFees() {
             console.log(`    ✅ Transferred ${Number(totalFee) / 1e9} to treasury`);
 
             // Mark swaps as swept
-            await markSwapsAsSwept(repository, swapIds);
+            await markSwapsAsSwept(swapIds);
             console.log(`    ✅ Marked ${swapIds.length} swap(s) as swept`);
 
             totalSwept += totalFee;
@@ -192,8 +193,8 @@ export async function sweepProtocolFees() {
 /**
  * Get unswept fees grouped by token for a pool
  */
-async function getUnsweptFees(repository, poolAddress) {
-  const pool = repository.pool;
+async function getUnsweptFees(poolAddress) {
+  const pool = getDbPool();
 
   // Query for unswept swaps (fee_swept = false or null)
   const result = await pool.query(`
@@ -219,10 +220,10 @@ async function getUnsweptFees(repository, poolAddress) {
 /**
  * Mark swaps as swept in database
  */
-async function markSwapsAsSwept(repository, swapIds) {
+async function markSwapsAsSwept(swapIds) {
   if (!swapIds || swapIds.length === 0) return;
 
-  const pool = repository.pool;
+  const pool = getDbPool();
 
   await pool.query(`
     UPDATE anchor_swaps
@@ -236,8 +237,10 @@ async function markSwapsAsSwept(repository, swapIds) {
  */
 export async function getSweepStatus() {
   try {
-    const repository = getAnchorRepository();
-    const pool = repository.pool;
+    // Ensure columns exist
+    await ensureColumns();
+
+    const pool = getDbPool();
 
     const result = await pool.query(`
       SELECT
