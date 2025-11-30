@@ -2,6 +2,8 @@
 // FX Anchor SDK Server for Silverback Anchor Pools
 // Enables Silverback pools to be discovered via FX resolver and creates proper SWAP transactions
 
+console.log('🚀 fx-anchor-server.js loaded - VERSION 2');
+
 import { KeetaNetFXAnchorHTTPServer } from '@keetanetwork/anchor/services/fx/server.js';
 import { getOpsClient, getTreasuryAccount, accountFromAddress } from '../utils/client.js';
 import { getSilverbackAnchorService } from './anchor-service.js';
@@ -489,6 +491,8 @@ export async function getSilverbackFXAnchorRoutes() {
             // Record swap after successful createExchange
             const isCreateExchange = path === '/api/createExchange' || routePattern.includes('createExchange');
             const isSuccess = !result.statusCode || result.statusCode < 400;
+
+            console.log(`🔔 FX handler completed - path: ${path}, routePattern: ${routePattern}`);
 
             if (isCreateExchange) {
               console.log(`📝 createExchange detected - path: ${path}, statusCode: ${result.statusCode}, isSuccess: ${isSuccess}`);
