@@ -2,8 +2,7 @@ import path from "path";
 import { createServer } from "./index";
 import * as express from "express";
 
-// createServer is now async, so we need to await it
-const app = await createServer();
+const app = createServer();
 const port = process.env.PORT || 3000;
 
 // In production, serve the built SPA files

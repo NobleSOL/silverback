@@ -2,9 +2,9 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import keetaRoutes from "./keeta-routes.ts";
-import { getSilverbackFXAnchorRoutes } from "./keeta-impl/services/fx-anchor-server.js";
+import fxRoutes from "./keeta-impl/routes/fx.js";
 
-export async function createServer() {
+export function createServer() {
   const app = express();
 
   // CORS configuration - Allow Vercel frontend and development
@@ -53,14 +53,8 @@ export async function createServer() {
   // - https://dexkeeta.onrender.com/fx/api/getQuote
   // - https://dexkeeta.onrender.com/fx/api/createExchange
   // - https://dexkeeta.onrender.com/fx/api/getExchangeStatus
-  try {
-    const fxRoutes = await getSilverbackFXAnchorRoutes();
-    app.use('/fx', fxRoutes);
-    console.log('✅ FX Anchor routes mounted at /fx');
-  } catch (error) {
-    console.error('⚠️  FX Anchor routes failed to initialize:', error.message);
-    console.error('   Continuing without FX resolver support');
-  }
+  app.use('/fx', fxRoutes);
+  console.log('✅ FX Anchor routes mounted at /fx');
 
   return app;
 }

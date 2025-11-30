@@ -336,52 +336,68 @@ export async function getSilverbackFXAnchorRoutes() {
     const server = new KeetaNetFXAnchorHTTPServer(config);
 
     // Get routes from SDK (returns object, not Express router)
+    console.log('🔍 Calling server.initRoutes()...');
     const routes = await server.initRoutes(config);
+
+    console.log('🔍 Routes returned from SDK:', {
+      type: typeof routes,
+      isArray: Array.isArray(routes),
+      keys: routes ? Object.keys(routes) : 'null',
+      routeCount: routes ? Object.keys(routes).length : 0
+    });
 
     // Convert SDK routes to Express router
     const express = await import('express');
     const router = express.Router();
 
     // Iterate over routes and add to Express
+    let registeredCount = 0;
     for (const [routePattern, handler] of Object.entries(routes)) {
-      const [method, path] = routePattern.split(' ');
-      const lowerMethod = method.toLowerCase();
+      try {
+        const [method, path] = routePattern.split(' ');
+        const lowerMethod = method.toLowerCase();
 
-      // Create Express-compatible handler
-      const expressHandler = async (req, res) => {
-        try {
-          // Convert Express request to SDK format
-          const urlParams = new Map(Object.entries(req.params));
-          const postData = req.body;
-          const requestHeaders = req.headers;
-          const requestUrl = new URL(req.originalUrl, `http://${req.headers.host}`);
+        console.log(`🔗 Registering FX route: ${method} ${path}`);
 
-          // Call SDK handler
-          const handlerFn = typeof handler === 'function' ? handler : handler.handler;
-          const result = await handlerFn(urlParams, postData, requestHeaders, requestUrl);
+        // Create Express-compatible handler
+        const expressHandler = async (req, res) => {
+          try {
+            // Convert Express request to SDK format
+            const urlParams = new Map(Object.entries(req.params));
+            const postData = req.body;
+            const requestHeaders = req.headers;
+            const requestUrl = new URL(req.originalUrl, `http://${req.headers.host}`);
 
-          // Send response
-          if (result.statusCode) {
-            res.status(result.statusCode);
-          }
-          if (result.headers) {
-            for (const [key, value] of Object.entries(result.headers)) {
-              res.setHeader(key, value);
+            // Call SDK handler
+            const handlerFn = typeof handler === 'function' ? handler : handler.handler;
+            const result = await handlerFn(urlParams, postData, requestHeaders, requestUrl);
+
+            // Send response
+            if (result.statusCode) {
+              res.status(result.statusCode);
             }
+            if (result.headers) {
+              for (const [key, value] of Object.entries(result.headers)) {
+                res.setHeader(key, value);
+              }
+            }
+            res.type(result.contentType || 'application/json');
+            res.send(result.output);
+          } catch (error) {
+            console.error(`❌ FX route error (${routePattern}):`, error);
+            res.status(500).json({ error: error.message });
           }
-          res.type(result.contentType || 'application/json');
-          res.send(result.output);
-        } catch (error) {
-          console.error(`❌ FX route error (${routePattern}):`, error);
-          res.status(500).json({ error: error.message });
-        }
-      };
+        };
 
-      // Add route to Express router
-      router[lowerMethod](path, expressHandler);
+        // Add route to Express router
+        router[lowerMethod](path, expressHandler);
+        registeredCount++;
+      } catch (error) {
+        console.error(`❌ Failed to register route ${routePattern}:`, error);
+      }
     }
 
-    console.log('✅ Silverback FX Anchor routes initialized');
+    console.log(`✅ Silverback FX Anchor routes initialized (${registeredCount} routes registered)`);
     console.log('   Provider ID: silverback');
     console.log('   Endpoints: /, /api/getQuote, /api/createExchange, /api/getExchangeStatus');
 
