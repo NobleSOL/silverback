@@ -20,6 +20,14 @@ router.get('/', (req, res) => {
 });
 
 /**
+ * Test endpoint to verify FX routes are working
+ * GET /test
+ */
+router.get('/test', (req, res) => {
+  res.json({ ok: true, message: 'FX routes are working!', timestamp: new Date().toISOString() });
+});
+
+/**
  * Get swap quote with signature
  * POST /api/getQuote
  */
