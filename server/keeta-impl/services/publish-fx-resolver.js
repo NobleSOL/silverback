@@ -70,10 +70,53 @@ export async function publishFXMetadataToResolver(storageAccountAddress = null) 
       from: conversions
     };
 
-    // Step 4: Build complete ServiceMetadata structure
+    // Step 4: Build currency map with token metadata fetched from blockchain
+    const currencyMap = {};
+    const { fetchTokenMetadata } = await import('../utils/client.js');
+
+    for (const pool of pools) {
+      if (!currencyMap[pool.token_a]) {
+        try {
+          const metadata = await fetchTokenMetadata(pool.token_a);
+          currencyMap[pool.token_a] = {
+            name: metadata.name || pool.token_a.slice(0, 12),
+            symbol: metadata.symbol || 'UNKNOWN',
+            decimals: metadata.decimals || 9
+          };
+          console.log(`✅ Token A metadata: ${metadata.symbol} (${metadata.decimals} decimals)`);
+        } catch (error) {
+          console.error(`⚠️  Failed to fetch metadata for ${pool.token_a}:`, error.message);
+          currencyMap[pool.token_a] = {
+            name: pool.token_a.slice(0, 12),
+            symbol: 'UNKNOWN',
+            decimals: 9
+          };
+        }
+      }
+      if (!currencyMap[pool.token_b]) {
+        try {
+          const metadata = await fetchTokenMetadata(pool.token_b);
+          currencyMap[pool.token_b] = {
+            name: metadata.name || pool.token_b.slice(0, 12),
+            symbol: metadata.symbol || 'UNKNOWN',
+            decimals: metadata.decimals || 9
+          };
+          console.log(`✅ Token B metadata: ${metadata.symbol} (${metadata.decimals} decimals)`);
+        } catch (error) {
+          console.error(`⚠️  Failed to fetch metadata for ${pool.token_b}:`, error.message);
+          currencyMap[pool.token_b] = {
+            name: pool.token_b.slice(0, 12),
+            symbol: 'UNKNOWN',
+            decimals: 9
+          };
+        }
+      }
+    }
+
+    // Step 5: Build complete ServiceMetadata structure
     const serviceMetadata = {
       version: 1,
-      currencyMap: {}, // Optional: can map currency codes to token addresses
+      currencyMap, // Map token addresses to their metadata
       services: {
         fx: {
           'silverback': fxMetadata  // Provider ID is 'silverback'
