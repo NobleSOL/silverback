@@ -697,4 +697,60 @@ router.post('/migrate-snapshots', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/cleanup-anchor-pools
+ *
+ * Delete unfunded anchor pools, keep only the funded KTA/WAVE pool
+ */
+router.post('/cleanup-anchor-pools', async (req, res) => {
+  try {
+    const { getAnchorRepository } = await import('../db/anchor-repository.js');
+    const repo = getAnchorRepository();
+
+    const POOLS_TO_DELETE = [
+      'keeta_ar625ggl42fqb5tbtgmcw5abd277xpujg6odgjfypmdlq6c53xztzptkssoja', // KTA/ROCK
+      'keeta_aqqvchwui4oftmsn6wlesseymdu6z5wfrjycabsenywsxzh7bjvjssf6vstgi', // KTA/RIDE
+      'keeta_aqncunhoohmuvsbxswiu22uxxivojwy33rwnyycrzededjlythl75tqkrhyns'  // RIDE/WAVE
+    ];
+
+    console.log('🗑️  Cleaning up unfunded anchor pools...');
+
+    const results = [];
+    for (const poolAddress of POOLS_TO_DELETE) {
+      try {
+        await repo.deleteAnchorPool(poolAddress);
+        console.log(`✅ Deleted: ${poolAddress.slice(-12)}`);
+        results.push({ poolAddress, status: 'deleted' });
+      } catch (error) {
+        console.error(`❌ Error deleting ${poolAddress.slice(-12)}:`, error.message);
+        results.push({ poolAddress, status: 'error', error: error.message });
+      }
+    }
+
+    // Get remaining pools
+    const remaining = await repo.loadAnchorPools();
+    console.log(`📊 Remaining anchor pools: ${remaining.length}`);
+
+    res.json({
+      success: true,
+      deleted: results.filter(r => r.status === 'deleted').length,
+      remaining: remaining.length,
+      details: results,
+      pools: remaining.map(p => ({
+        pool_address: p.pool_address,
+        token_a: p.token_a,
+        token_b: p.token_b,
+        status: p.status,
+        fee_bps: p.fee_bps
+      }))
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;
