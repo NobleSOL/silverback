@@ -2,7 +2,7 @@ import path from "path";
 import { createServer } from "./index";
 import * as express from "express";
 
-const app = createServer();
+const app = await createServer();
 const port = process.env.PORT || 3000;
 
 // In production, serve the built SPA files
@@ -54,16 +54,6 @@ app.listen(port, async () => {
   }, HOUR_MS);
 
   console.log(`⏰ Snapshot recorder scheduled (every hour)\n`);
-
-  // Start FX Anchor server on port 3001
-  console.log('🔗 Starting FX Anchor server...');
-  try {
-    const { startSilverbackFXAnchorServer } = await import('./keeta-impl/services/fx-anchor-server.js');
-    await startSilverbackFXAnchorServer(3001);
-  } catch (error) {
-    console.error('⚠️  FX Anchor server failed to start:', error.message);
-    console.error('   Continuing without FX resolver support');
-  }
 });
 
 // Graceful shutdown
