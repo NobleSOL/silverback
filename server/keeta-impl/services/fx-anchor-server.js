@@ -3,8 +3,10 @@
 // Enables Silverback pools to be discovered via FX resolver and creates proper SWAP transactions
 
 import { KeetaNetFXAnchorHTTPServer } from '@keetanetwork/anchor/services/fx/server.js';
-import { getOpsClient, getTreasuryAccount, accountFromAddress } from '../utils/client.js';
+import { getOpsClient, getTreasuryAccount, accountFromAddress, getOpsAccount } from '../utils/client.js';
 import { getSilverbackAnchorService } from './anchor-service.js';
+import { getAnchorRepository } from '../db/anchor-repository.js';
+import * as KeetaNet from '@keetanetwork/keetanet-client';
 
 /**
  * Create and start FX Anchor HTTP Server for Silverback
@@ -391,12 +393,22 @@ export async function getSilverbackFXAnchorRoutes() {
     const express = await import('express');
     const router = express.Router();
 
-    // Iterate over routes and add to Express
+    // Store reference to SDK's createExchange handler for our wrapper
+    let sdkCreateExchangeHandler = null;
+
+    // Iterate over routes and add to Express (EXCEPT createExchange which we override)
     let registeredCount = 0;
     for (const [routePattern, handler] of Object.entries(routes)) {
       try {
         const [method, path] = routePattern.split(' ');
         const lowerMethod = method.toLowerCase();
+
+        // Store createExchange handler but don't add to router - we'll wrap it
+        if (path === '/api/createExchange') {
+          sdkCreateExchangeHandler = typeof handler === 'function' ? handler : handler.handler;
+          console.log(`🔗 Captured SDK route: ${method} ${path} (will wrap with treasury fee handler)`);
+          continue;
+        }
 
         console.log(`🔗 Registering FX route: ${method} ${path}`);
 
@@ -444,6 +456,138 @@ export async function getSilverbackFXAnchorRoutes() {
         console.error(`❌ Failed to register route ${routePattern}:`, error);
       }
     }
+
+    // Add custom createExchange handler that wraps SDK and adds treasury fee transfer
+    // The SDK handles the main swap, then we transfer protocol fee from pool to treasury
+    router.post('/api/createExchange', async (req, res) => {
+      try {
+        console.log('🔍 Custom createExchange with treasury fee:', req.body);
+
+        const request = req.body?.request || req.body;
+        if (!request || !request.quote) {
+          return res.status(400).json({ ok: false, error: 'Missing quote in request' });
+        }
+        if (!request.block) {
+          return res.status(400).json({ ok: false, error: 'Missing block in request' });
+        }
+
+        const quote = request.quote;
+
+        // Extract quote details for treasury fee calculation
+        const tokenIn = quote.request.from;
+        const tokenOut = quote.request.to;
+        const poolAddress = quote.account;
+        const amountIn = BigInt(quote.request.amount);
+        const amountToUser = BigInt(quote.convertedAmount);
+
+        // Calculate protocol fee: 0.05% of the output amount
+        // Note: getConversionRateAndFee already deducts this from convertedAmount
+        // So protocolFee = fullOutput - convertedAmount
+        // We can recalculate: protocolFee = convertedAmount * 5 / 9995 (approximately)
+        // OR get fresh quote to know the full amount
+        const freshQuote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
+        if (!freshQuote) {
+          return res.status(400).json({ ok: false, error: 'Pool no longer available' });
+        }
+
+        const fullAmountOut = BigInt(freshQuote.amountOut);
+        const protocolFee = (fullAmountOut * anchorService.PROTOCOL_FEE_BPS) / 10000n;
+
+        console.log(`💰 Exchange details:`);
+        console.log(`   Pool: ${poolAddress}`);
+        console.log(`   Input: ${Number(amountIn) / 1e9}`);
+        console.log(`   Full Output: ${Number(fullAmountOut) / 1e9}`);
+        console.log(`   User Gets: ${Number(amountToUser) / 1e9}`);
+        console.log(`   Protocol Fee: ${Number(protocolFee) / 1e9} (0.05%) -> Treasury`);
+
+        // Call the SDK's createExchange handler (captured earlier)
+        if (!sdkCreateExchangeHandler) {
+          return res.status(500).json({ ok: false, error: 'SDK createExchange handler not found' });
+        }
+
+        // Execute SDK handler
+        const urlParams = new Map();
+        const postData = { request };
+        try {
+          const sdkResult = await sdkCreateExchangeHandler(urlParams, postData, req.headers, new URL(req.originalUrl, `http://${req.headers.host}`));
+
+          // Parse SDK result
+          const sdkResponse = JSON.parse(sdkResult.output);
+          if (!sdkResponse.ok) {
+            return res.status(400).json(sdkResponse);
+          }
+
+          console.log(`✅ SDK swap completed: ${sdkResponse.exchangeID}`);
+
+          // Now transfer protocol fee from pool to treasury (async, don't block response)
+          if (protocolFee > 0n) {
+            // Run treasury transfer in background
+            (async () => {
+              try {
+                const poolAccount = accountFromAddress(poolAddress);
+                const tokenOutAccount = accountFromAddress(tokenOut);
+                const treasuryAccount = getTreasuryAccount();
+
+                // Create pool's UserClient
+                const poolUserClient = new KeetaNet.UserClient({
+                  client: opsClient.client,
+                  network: opsClient.network,
+                  networkAlias: 'main',
+                  account: poolAccount,
+                  signer: opsClient.account
+                });
+
+                // Wait for swap to settle
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                // Transfer protocol fee to treasury
+                const builder = poolUserClient.initBuilder();
+                builder.send(
+                  treasuryAccount,
+                  protocolFee,
+                  tokenOutAccount,
+                  undefined,
+                  { account: poolAccount }
+                );
+
+                await poolUserClient.publishBuilder(builder);
+                console.log(`✅ Treasury fee transferred: ${Number(protocolFee) / 1e9} to ${treasuryAccount.publicKeyString.get().slice(0, 20)}...`);
+
+                // Record swap in database
+                const repository = getAnchorRepository();
+                const userBlock = new KeetaNet.lib.Block(request.block);
+                const userAddress = userBlock.account.publicKeyString.get();
+
+                await repository.recordAnchorSwap({
+                  poolAddress,
+                  tokenIn,
+                  tokenOut,
+                  amountIn,
+                  amountOut: fullAmountOut,
+                  feeCollected: amountIn - (amountIn * (10000n - BigInt(freshQuote.feeBps))) / 10000n,
+                  protocolFee,
+                  userAddress
+                });
+              } catch (err) {
+                console.error(`❌ Treasury fee transfer failed:`, err.message);
+                // Log for manual reconciliation
+                console.error(`   MANUAL FIX NEEDED: Pool ${poolAddress.slice(-12)}, Fee ${Number(protocolFee) / 1e9}`);
+              }
+            })();
+          }
+
+          // Return success immediately (treasury transfer happens async)
+          res.json(sdkResponse);
+        } catch (sdkError) {
+          console.error(`❌ SDK createExchange error:`, sdkError);
+          return res.status(500).json({ ok: false, error: sdkError.message });
+        }
+      } catch (error) {
+        console.error(`❌ Custom createExchange error:`, error);
+        res.status(500).json({ ok: false, error: error.message });
+      }
+    });
+    registeredCount++;
 
     console.log(`✅ Silverback FX Anchor routes initialized (${registeredCount} routes registered)`);
     console.log('   Provider ID: silverback');

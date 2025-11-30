@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import keetaRoutes from "./keeta-routes.ts";
 import { getSilverbackFXAnchorRoutes } from "./keeta-impl/services/fx-anchor-server.js";
+import aggregatorRoutes from "./keeta-impl/routes/aggregator.js";
 
 export async function createServer() {
   const app = express();
@@ -68,6 +69,13 @@ export async function createServer() {
     console.error('⚠️  Failed to mount FX routes:', error instanceof Error ? error.message : error);
     console.error('   Continuing without FX resolver support');
   }
+
+  // FX Aggregator routes (compares quotes across ALL providers)
+  // - https://dexkeeta.onrender.com/api/aggregator/providers
+  // - https://dexkeeta.onrender.com/api/aggregator/quote
+  // - https://dexkeeta.onrender.com/api/aggregator/best-quote
+  app.use('/api/aggregator', aggregatorRoutes);
+  console.log('✅ FX Aggregator routes mounted at /api/aggregator');
 
   return app;
 }
