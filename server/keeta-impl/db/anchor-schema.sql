@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS anchor_swaps (
   amount_in VARCHAR(255) NOT NULL,   -- Stored as string to preserve precision
   amount_out VARCHAR(255) NOT NULL,  -- Stored as string to preserve precision
   fee_collected VARCHAR(255) NOT NULL,  -- Fee collected by pool creator
+  protocol_fee VARCHAR(255) DEFAULT '0',  -- Protocol fee (0.05%) collected by Silverback
 
   -- Transaction info
   tx_hash VARCHAR(255),  -- Keeta transaction hash

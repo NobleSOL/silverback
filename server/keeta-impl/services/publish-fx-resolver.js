@@ -65,50 +65,47 @@ export async function publishFXMetadataToResolver(storageAccountAddress = null) 
         getEstimate: `${baseUrl}/api/getEstimate`,
         getQuote: `${baseUrl}/api/getQuote`,
         createExchange: `${baseUrl}/api/createExchange`,
-        getExchangeStatus: `${baseUrl}/api/getExchangeStatus/:id`
+        getExchangeStatus: `${baseUrl}/api/getExchangeStatus/{id}`  // SDK uses {id} not :id
       },
       from: conversions
     };
 
-    // Step 4: Build currency map with token metadata fetched from blockchain
+    // Step 4: Build currency map - SDK expects: { "$SYMBOL": "keeta_address" }
+    // The currencyMap maps currency codes (like "$KTA" or "$WAVE") to token addresses
     const currencyMap = {};
     const { fetchTokenMetadata } = await import('../utils/client.js');
+    const seenTokens = new Set();
 
     for (const pool of pools) {
-      if (!currencyMap[pool.token_a]) {
+      // Process token A
+      if (!seenTokens.has(pool.token_a)) {
+        seenTokens.add(pool.token_a);
         try {
           const metadata = await fetchTokenMetadata(pool.token_a);
-          currencyMap[pool.token_a] = {
-            name: metadata.name || pool.token_a.slice(0, 12),
-            symbol: metadata.symbol || 'UNKNOWN',
-            decimals: metadata.decimals || 9
-          };
-          console.log(`✅ Token A metadata: ${metadata.symbol} (${metadata.decimals} decimals)`);
+          // SDK format: currencyMap["$SYMBOL"] = "keeta_address"
+          // Use $ prefix for crypto tokens as per SDK spec
+          const currencyCode = `$${metadata.symbol || 'UNKNOWN'}`;
+          currencyMap[currencyCode] = pool.token_a;
+          console.log(`✅ Token A: ${currencyCode} -> ${pool.token_a.slice(0, 20)}...`);
         } catch (error) {
           console.error(`⚠️  Failed to fetch metadata for ${pool.token_a}:`, error.message);
-          currencyMap[pool.token_a] = {
-            name: pool.token_a.slice(0, 12),
-            symbol: 'UNKNOWN',
-            decimals: 9
-          };
+          // Use address prefix as fallback symbol
+          const fallbackCode = `$${pool.token_a.slice(-8).toUpperCase()}`;
+          currencyMap[fallbackCode] = pool.token_a;
         }
       }
-      if (!currencyMap[pool.token_b]) {
+      // Process token B
+      if (!seenTokens.has(pool.token_b)) {
+        seenTokens.add(pool.token_b);
         try {
           const metadata = await fetchTokenMetadata(pool.token_b);
-          currencyMap[pool.token_b] = {
-            name: metadata.name || pool.token_b.slice(0, 12),
-            symbol: metadata.symbol || 'UNKNOWN',
-            decimals: metadata.decimals || 9
-          };
-          console.log(`✅ Token B metadata: ${metadata.symbol} (${metadata.decimals} decimals)`);
+          const currencyCode = `$${metadata.symbol || 'UNKNOWN'}`;
+          currencyMap[currencyCode] = pool.token_b;
+          console.log(`✅ Token B: ${currencyCode} -> ${pool.token_b.slice(0, 20)}...`);
         } catch (error) {
           console.error(`⚠️  Failed to fetch metadata for ${pool.token_b}:`, error.message);
-          currencyMap[pool.token_b] = {
-            name: pool.token_b.slice(0, 12),
-            symbol: 'UNKNOWN',
-            decimals: 9
-          };
+          const fallbackCode = `$${pool.token_b.slice(-8).toUpperCase()}`;
+          currencyMap[fallbackCode] = pool.token_b;
         }
       }
     }
@@ -116,7 +113,7 @@ export async function publishFXMetadataToResolver(storageAccountAddress = null) 
     // Step 5: Build complete ServiceMetadata structure
     const serviceMetadata = {
       version: 1,
-      currencyMap, // Map token addresses to their metadata
+      currencyMap, // Maps "$SYMBOL" -> "keeta_address" (SDK format)
       services: {
         fx: {
           'silverback': fxMetadata  // Provider ID is 'silverback'

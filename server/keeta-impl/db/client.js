@@ -157,6 +157,7 @@ export async function initializeDatabase() {
           amount_in VARCHAR(255) NOT NULL,
           amount_out VARCHAR(255) NOT NULL,
           fee_collected VARCHAR(255) NOT NULL,
+          protocol_fee VARCHAR(255) DEFAULT '0',
           tx_hash VARCHAR(255),
           block_height BIGINT,
           user_address VARCHAR(255),

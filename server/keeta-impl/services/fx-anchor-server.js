@@ -18,6 +18,10 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
 
   console.log('🚀 Initializing Silverback FX Anchor Server...');
 
+  // IMPORTANT: Pass underlying Client, NOT UserClient!
+  // The SDK checks if config.client is a UserClient:
+  // - If UserClient: uses it directly, ignores account/signer config
+  // - If Client: creates per-request UserClient with pool account + signer
   const server = new KeetaNetFXAnchorHTTPServer({
     // Server configuration
     port: port,
@@ -25,8 +29,12 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
     // Homepage/metadata
     homepage: 'https://dexkeeta.onrender.com',
 
-    // Network client for blockchain operations
-    client: opsClient,
+    // Network client for blockchain operations (NOT UserClient!)
+    client: {
+      client: opsClient.client,
+      network: opsClient.network,
+      networkAlias: 'main'
+    },
 
     // Pool accounts - function that returns the pool for a given conversion
     account: async (request) => {
@@ -42,7 +50,8 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
         // request.from and request.to are already string addresses
         const tokenIn = request.from;
         const tokenOut = request.to;
-        const amountIn = request.amount;
+        // SDK passes amount as string, anchor-service expects BigInt
+        const amountIn = BigInt(request.amount);
 
         // Get quote to find best pool
         const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
@@ -134,7 +143,8 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
           // request.from and request.to are already string addresses
           const tokenIn = request.from;
           const tokenOut = request.to;
-          const amountIn = request.amount;
+          // SDK passes amount as string, anchor-service expects BigInt
+          const amountIn = BigInt(request.amount);
 
           console.log(`📊 FX SDK Quote Request: ${Number(amountIn) / 1e9} tokens`);
           console.log(`   From: ${tokenIn.slice(0, 20)}...`);
@@ -242,16 +252,26 @@ export async function getSilverbackFXAnchorRoutes() {
     const treasuryAccount = getTreasuryAccount();
 
     // Build config for FX server
+    // IMPORTANT: Pass underlying Client, NOT UserClient!
+    // The SDK checks if config.client is a UserClient:
+    // - If UserClient: uses it directly, ignores account/signer config
+    // - If Client: creates per-request UserClient with pool account + signer
+    // We need the second behavior so swaps use the correct pool account
     const config = {
       // No port - we're getting routes only
       homepage: 'https://dexkeeta.onrender.com',
-      client: opsClient,
+      client: {
+        client: opsClient.client,
+        network: opsClient.network,
+        networkAlias: 'main'
+      },
       account: async (request) => {
         try {
           // request.from and request.to are already string addresses
           const tokenIn = request.from;
           const tokenOut = request.to;
-          const amountIn = request.amount;
+          // SDK passes amount as string, anchor-service expects BigInt
+          const amountIn = BigInt(request.amount);
 
           const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
 
@@ -315,7 +335,8 @@ export async function getSilverbackFXAnchorRoutes() {
             // request.from and request.to are already string addresses
             const tokenIn = request.from;
             const tokenOut = request.to;
-            const amountIn = request.amount;
+            // SDK passes amount as string, anchor-service expects BigInt
+            const amountIn = BigInt(request.amount);
 
             const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
 
