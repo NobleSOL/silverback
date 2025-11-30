@@ -202,7 +202,7 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
 export async function startSilverbackFXAnchorServer(port = 3001) {
   try {
     const server = await createSilverbackFXAnchorServer(port);
-    await server.listen();
+    await server.start();
     console.log(`🎉 Silverback FX Anchor Server listening on port ${port}`);
     return server;
   } catch (error) {
