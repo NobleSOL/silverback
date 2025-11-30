@@ -28,7 +28,6 @@ app.listen(port, async () => {
   console.log(`🚀 Fusion Starter server running on port ${port}`);
   console.log(`📱 Frontend: http://localhost:${port}`);
   console.log(`🔧 API: http://localhost:${port}/api`);
-  console.log(`🔗 FX Anchor: http://localhost:${port}/fx`);
 
   // Start snapshot recorder for APY/volume calculation
   console.log('\n📸 Starting pool snapshot recorder...');
@@ -55,6 +54,16 @@ app.listen(port, async () => {
   }, HOUR_MS);
 
   console.log(`⏰ Snapshot recorder scheduled (every hour)\n`);
+
+  // Start FX Anchor server on port 3001
+  console.log('🔗 Starting FX Anchor server...');
+  try {
+    const { startSilverbackFXAnchorServer } = await import('./keeta-impl/services/fx-anchor-server.js');
+    await startSilverbackFXAnchorServer(3001);
+  } catch (error) {
+    console.error('⚠️  FX Anchor server failed to start:', error.message);
+    console.error('   Continuing without FX resolver support');
+  }
 });
 
 // Graceful shutdown

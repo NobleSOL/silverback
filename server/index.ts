@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import keetaRoutes from "./keeta-routes.ts";
-import fxRoutes from "./keeta-impl/routes/fx.js";
 
 export function createServer() {
   const app = express();
@@ -46,15 +45,6 @@ export function createServer() {
 
   // Keeta DEX API routes
   app.use(keetaRoutes);
-
-  // FX Anchor routes (for resolver discovery)
-  // Mount at /fx so Silverback FX endpoints are at:
-  // - https://dexkeeta.onrender.com/fx/ (metadata)
-  // - https://dexkeeta.onrender.com/fx/api/getQuote
-  // - https://dexkeeta.onrender.com/fx/api/createExchange
-  // - https://dexkeeta.onrender.com/fx/api/getExchangeStatus
-  app.use('/fx', fxRoutes);
-  console.log('✅ FX Anchor routes mounted at /fx');
 
   return app;
 }
