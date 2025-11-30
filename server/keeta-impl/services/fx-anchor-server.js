@@ -17,14 +17,18 @@ async function recordFXSwap(postData, result, anchorService) {
   try {
     console.log('📝 recordFXSwap called with postData:', JSON.stringify(postData, null, 2));
 
-    // Parse the request data
-    const request = postData?.request || postData;
+    // createExchange sends { quote: { request: { from, to, amount } } }
+    // Try multiple paths to find the request data
+    const quote = postData?.quote || postData?.request?.quote || postData;
+    const request = quote?.request || postData?.request || postData;
     const { from: tokenIn, to: tokenOut, amount, affinity } = request;
 
-    console.log('📝 Parsed request:', { tokenIn: tokenIn?.slice(0, 20), tokenOut: tokenOut?.slice(0, 20), amount, affinity });
+    console.log('📝 Parsed - quote:', !!quote, 'request:', !!request);
+    console.log('📝 Parsed request:', { tokenIn: tokenIn?.slice?.(0, 20), tokenOut: tokenOut?.slice?.(0, 20), amount, affinity });
 
     if (!tokenIn || !tokenOut || !amount) {
       console.log('⚠️ Cannot record swap - missing request data:', { tokenIn: !!tokenIn, tokenOut: !!tokenOut, amount: !!amount });
+      console.log('⚠️ Full postData structure:', Object.keys(postData || {}), postData?.quote ? Object.keys(postData.quote) : 'no quote');
       return;
     }
 
