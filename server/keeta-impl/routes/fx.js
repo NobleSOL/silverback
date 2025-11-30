@@ -5,7 +5,7 @@
 import express from 'express';
 import { getOpsClient, accountFromAddress } from '../utils/client.js';
 import { getSilverbackAnchorService } from '../services/anchor-service.js';
-import { KeetaNet } from '@keetanetwork/keetanet-client';
+import * as KeetaNet from '@keetanetwork/keetanet-client';
 import * as Signing from '@keetanetwork/anchor/lib/utils/signing.js';
 
 const router = express.Router();
