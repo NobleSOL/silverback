@@ -2,8 +2,6 @@
 // FX Anchor SDK Server for Silverback Anchor Pools
 // Enables Silverback pools to be discovered via FX resolver and creates proper SWAP transactions
 
-console.log('🚀 fx-anchor-server.js loaded - VERSION 2');
-
 import { KeetaNetFXAnchorHTTPServer } from '@keetanetwork/anchor/services/fx/server.js';
 import { getOpsClient, getTreasuryAccount, accountFromAddress } from '../utils/client.js';
 import { getSilverbackAnchorService } from './anchor-service.js';
@@ -15,88 +13,61 @@ import { getAnchorRepository } from '../db/anchor-repository.js';
  */
 async function recordFXSwap(postData, result, anchorService) {
   try {
-    // Log structure without JSON.stringify (can fail on complex objects)
-    console.log('📝 recordFXSwap - postData keys:', Object.keys(postData || {}));
-    console.log('📝 recordFXSwap - postData.request keys:', Object.keys(postData?.request || {}));
-    console.log('📝 recordFXSwap - postData.quote keys:', Object.keys(postData?.quote || {}));
-
-    // The SDK sends { request: { quote: { request: { from, to, amount } } } }
-    // Our wrapper adds another { request: } layer, so it might be deeply nested
+    // Extract request data from nested SDK structure
     const innerQuote = postData?.request?.quote || postData?.quote;
     const innerRequest = innerQuote?.request || postData?.request?.request || postData?.request;
-
-    console.log('📝 innerQuote keys:', Object.keys(innerQuote || {}));
-    console.log('📝 innerRequest keys:', Object.keys(innerRequest || {}));
 
     const tokenIn = innerRequest?.from;
     const tokenOut = innerRequest?.to;
     const amount = innerRequest?.amount;
-    const affinity = innerRequest?.affinity;
-
-    console.log('📝 Extracted:', { tokenIn: tokenIn?.slice?.(0, 30), tokenOut: tokenOut?.slice?.(0, 30), amount });
 
     if (!tokenIn || !tokenOut || !amount) {
-      console.log('⚠️ Cannot record swap - missing request data:', { tokenIn: !!tokenIn, tokenOut: !!tokenOut, amount: !!amount });
+      console.warn('⚠️ Cannot record swap - missing request data');
       return;
     }
 
-    // Parse the result to get exchange details
+    // Parse exchange result
     let exchange;
     try {
       const output = typeof result.output === 'string' ? JSON.parse(result.output) : result.output;
       exchange = output?.exchange || output;
     } catch (e) {
-      console.log('⚠️ Cannot parse exchange result');
+      return;
+    }
+
+    // Parse amount (SDK may send as hex)
+    let amountIn;
+    try {
+      amountIn = BigInt(amount);
+    } catch (e) {
+      console.error('❌ Failed to parse swap amount:', e.message);
       return;
     }
 
     // Get quote to find pool details
-    // Handle hex amounts (SDK sends as '0x...')
-    let amountIn;
-    try {
-      amountIn = BigInt(amount);
-      console.log('📝 Parsed amountIn:', amountIn.toString());
-    } catch (e) {
-      console.error('❌ Failed to parse amount:', amount, e.message);
-      return;
-    }
-
-    console.log('📝 Calling getQuote for swap recording...');
     const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
-    console.log('📝 getQuote returned:', quote ? 'quote found' : 'null');
+    if (!quote) return;
 
-    if (!quote) {
-      console.log('⚠️ Cannot find pool for swap recording');
-      return;
-    }
-
-    console.log('📝 Quote details:', { poolAddress: quote.poolAddress?.slice(-12), amountOut: quote.amountOut });
-
-    // Calculate amounts
+    // Calculate fees
     const amountOutBigInt = BigInt(quote.amountOut);
     const protocolFee = (amountOutBigInt * anchorService.PROTOCOL_FEE_BPS) / 10000n;
     const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
 
-    console.log('📝 Calculated fees:', { protocolFee: protocolFee.toString(), poolCreatorFee: poolCreatorFee.toString() });
-
     // Record to database
     const repository = getAnchorRepository();
-    console.log('📝 Recording swap to database...');
     await repository.recordAnchorSwap({
       poolAddress: quote.poolAddress,
-      tokenIn: tokenIn,
-      tokenOut: tokenOut,
-      amountIn: amountIn,
+      tokenIn,
+      tokenOut,
+      amountIn,
       amountOut: amountOutBigInt,
       feeCollected: poolCreatorFee,
-      protocolFee: protocolFee,
+      protocolFee,
       userAddress: exchange?.user || 'fx-sdk-user',
       txHash: exchange?.id || null,
     });
 
-    console.log(`✅ FX Swap recorded: ${quote.amountInFormatted} → ${quote.amountOutFormatted}`);
-    console.log(`   Pool: ${quote.poolAddress.slice(-12)}`);
-    console.log(`   Protocol fee: ${Number(protocolFee) / 1e9} (0.05%)`);
+    console.log(`✅ FX swap recorded: ${quote.amountInFormatted} → ${quote.amountOutFormatted} (pool: ${quote.poolAddress.slice(-12)})`);
   } catch (error) {
     console.error('❌ Error recording FX swap:', error.message);
   }
@@ -135,31 +106,17 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
     // Pool accounts - function that returns the pool for a given conversion
     account: async (request) => {
       try {
-        console.log('🔍 FX SDK account() request:', {
-          from: request.from,
-          fromType: typeof request.from,
-          to: request.to,
-          toType: typeof request.to,
-          amount: request.amount
-        });
-
-        // request.from and request.to are already string addresses
         const tokenIn = request.from;
         const tokenOut = request.to;
-        // SDK passes amount as string, anchor-service expects BigInt
         const amountIn = BigInt(request.amount);
 
-        // Get quote to find best pool
         const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
-
         if (!quote || !quote.poolAddress) {
           throw new Error('No Silverback pool available for this conversion pair');
         }
-
-        // Return pool account
         return accountFromAddress(quote.poolAddress);
       } catch (error) {
-        console.error('❌ Error getting pool account:', error);
+        console.error('❌ FX account lookup error:', error.message);
         throw error;
       }
     },
@@ -228,27 +185,11 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
        */
       getConversionRateAndFee: async (request) => {
         try {
-          console.log('🔍 FX SDK getConversionRateAndFee() request:', {
-            from: request.from,
-            fromType: typeof request.from,
-            to: request.to,
-            toType: typeof request.to,
-            amount: request.amount
-          });
-
-          // request.from and request.to are already string addresses
           const tokenIn = request.from;
           const tokenOut = request.to;
-          // SDK passes amount as string, anchor-service expects BigInt
           const amountIn = BigInt(request.amount);
 
-          console.log(`📊 FX SDK Quote Request: ${Number(amountIn) / 1e9} tokens`);
-          console.log(`   From: ${tokenIn.slice(0, 20)}...`);
-          console.log(`   To: ${tokenOut.slice(0, 20)}...`);
-
-          // Get quote from Silverback anchor service
           const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
-
           if (!quote) {
             throw new Error('No Silverback pools available for this conversion pair');
           }
@@ -256,38 +197,23 @@ export async function createSilverbackFXAnchorServer(port = 3001) {
           const poolAccount = accountFromAddress(quote.poolAddress);
           const amountOut = BigInt(quote.amountOut);
 
-          // Calculate protocol fee (0.05%)
+          // Calculate protocol fee (0.05%) and amount user receives
           const protocolFee = (amountOut * anchorService.PROTOCOL_FEE_BPS) / 10000n;
           const amountToUser = amountOut - protocolFee;
 
-          // Pool creator's fee is already deducted in quote.amountOut
+          // Pool creator fee for cost reporting
           const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
 
-          // Total cost = pool creator fee (in tokenIn) + protocol fee (in tokenOut, converted to tokenIn)
-          // For simplicity, we report pool creator fee as the cost
-          const totalCost = poolCreatorFee;
-
-          console.log(`✅ Quote: ${quote.amountInFormatted} → ${Number(amountToUser) / 1e9} (after 0.05% protocol fee)`);
-          console.log(`   Pool: ${quote.poolAddress.slice(-12)}`);
-          console.log(`   Creator Fee: ${quote.feeBps / 100}%`);
-          console.log(`   Protocol Fee: 0.05%`);
-
-          // Return quote in FX SDK format
           return {
-            // Pool account
             account: poolAccount,
-
-            // Amount user receives (after protocol fee)
             convertedAmount: amountToUser,
-
-            // Cost (pool creator fee in input token)
             cost: {
-              amount: totalCost,
+              amount: poolCreatorFee,
               token: accountFromAddress(tokenIn)
             }
           };
         } catch (error) {
-          console.error('❌ FX SDK quote error:', error);
+          console.error('❌ FX quote error:', error.message);
           throw error;
         }
       },
@@ -499,15 +425,8 @@ export async function getSilverbackFXAnchorRoutes() {
         // Create Express-compatible handler
         const expressHandler = async (req, res) => {
           try {
-            console.log(`🔍 FX Request to ${routePattern}:`, {
-              body: req.body,
-              params: req.params,
-              query: req.query
-            });
-
             // Convert Express request to SDK format
             const urlParams = new Map(Object.entries(req.params));
-            // SDK expects { request: {...} } format, not raw body
             const postData = req.body?.request ? req.body : { request: req.body };
             const requestHeaders = req.headers;
             const requestUrl = new URL(req.originalUrl, `http://${req.headers.host}`);
@@ -520,16 +439,11 @@ export async function getSilverbackFXAnchorRoutes() {
             const isCreateExchange = path === '/api/createExchange' || routePattern.includes('createExchange');
             const isSuccess = !result.statusCode || result.statusCode < 400;
 
-            console.log(`🔔 FX handler completed - path: ${path}, routePattern: ${routePattern}`);
-
-            if (isCreateExchange) {
-              console.log(`📝 createExchange detected - path: ${path}, statusCode: ${result.statusCode}, isSuccess: ${isSuccess}`);
-              if (isSuccess) {
-                try {
-                  await recordFXSwap(postData, result, anchorService);
-                } catch (recordError) {
-                  console.error('⚠️ Failed to record swap (swap still succeeded):', recordError.message);
-                }
+            if (isCreateExchange && isSuccess) {
+              try {
+                await recordFXSwap(postData, result, anchorService);
+              } catch (recordError) {
+                console.error('⚠️ Failed to record swap:', recordError.message);
               }
             }
 

@@ -29,25 +29,12 @@ export class SilverbackAnchorService {
    */
   async getQuote(tokenIn, tokenOut, amountIn, decimalsIn, decimalsOut) {
     try {
-      console.log('🔎 getQuote called:', {
-        tokenIn,
-        tokenInType: typeof tokenIn,
-        tokenOut,
-        tokenOutType: typeof tokenOut,
-        amountIn,
-        decimalsIn,
-        decimalsOut
-      });
-
       // Find all active anchor pools for this token pair
       const pools = await this.repository.getAnchorPoolByPairKey(tokenIn, tokenOut);
 
       if (!pools || pools.length === 0) {
-        console.log(`⚠️ No Silverback anchor pools found for pair`);
         return null;
       }
-
-      console.log(`🔍 Found ${pools.length} Silverback anchor pool(s) for quote`);
 
       // Get quotes from all pools
       const quotes = await Promise.all(
@@ -58,22 +45,17 @@ export class SilverbackAnchorService {
       const validQuotes = quotes.filter(q => q !== null);
 
       if (validQuotes.length === 0) {
-        console.log(`⚠️ No Silverback pools have sufficient liquidity`);
         return null;
       }
 
-      // Sort by best output amount (descending)
+      // Sort by best output amount (descending) and return best quote
       validQuotes.sort((a, b) => {
         if (b.amountOut > a.amountOut) return 1;
         if (b.amountOut < a.amountOut) return -1;
         return 0;
       });
 
-      // Return best quote
-      const bestQuote = validQuotes[0];
-      console.log(`✅ Best Silverback quote: ${bestQuote.amountOutFormatted} ${bestQuote.symbolOut} (fee: ${bestQuote.feeBps / 100}%)`);
-
-      return bestQuote;
+      return validQuotes[0];
     } catch (error) {
       console.error('❌ Silverback anchor quote error:', error);
       return null;
@@ -96,16 +78,9 @@ export class SilverbackAnchorService {
       const reserveIn = await getTokenBalance(pool.pool_address, tokenInPool);
       const reserveOut = await getTokenBalance(pool.pool_address, tokenOutPool);
 
-      console.log(`   Pool ${pool.pool_address.slice(-8)}: Reserve In: ${reserveIn}, Reserve Out: ${reserveOut}`);
-
       // Check minimum liquidity
-      if (reserveIn === 0n || reserveOut === 0n) {
-        console.log(`   ⏭️  Skipping pool ${pool.pool_address.slice(-8)}: No liquidity`);
-        return null;
-      }
-
-      if (reserveIn < this.MINIMUM_LIQUIDITY || reserveOut < this.MINIMUM_LIQUIDITY) {
-        console.log(`   ⏭️  Skipping pool ${pool.pool_address.slice(-8)}: Below minimum liquidity`);
+      if (reserveIn === 0n || reserveOut === 0n ||
+          reserveIn < this.MINIMUM_LIQUIDITY || reserveOut < this.MINIMUM_LIQUIDITY) {
         return null;
       }
 
@@ -162,11 +137,6 @@ export class SilverbackAnchorService {
     try {
       const opsClient = await getOpsClient();
 
-      console.log(`🔄 Executing Silverback anchor swap TX2...`);
-      console.log(`   Pool: ${quote.poolAddress.slice(-8)}`);
-      console.log(`   Amount In: ${quote.amountInFormatted} ${quote.symbolIn}`);
-      console.log(`   Expected Out: ${quote.amountOutFormatted} ${quote.symbolOut}`);
-
       const poolAccount = accountFromAddress(quote.poolAddress);
       const tokenOutAccount = accountFromAddress(quote.tokenOut);
       const userAccount = accountFromAddress(userAddress);
@@ -179,9 +149,6 @@ export class SilverbackAnchorService {
       // Calculate protocol fee (0.05% of output amount)
       const protocolFee = (amountOutBigInt * this.PROTOCOL_FEE_BPS) / 10000n;
       const amountToUser = amountOutBigInt - protocolFee;
-
-      console.log(`💰 Protocol fee: ${Number(protocolFee) / Math.pow(10, 9)} ${quote.symbolOut} (0.05%)`);
-      console.log(`📝 TX2: Sending ${Number(amountToUser) / Math.pow(10, 9)} ${quote.symbolOut} to user`);
 
       // TX2: OPS sends tokenOut from pool - protocol fee to treasury, rest to user
       // (User has already sent tokenIn to pool via TX1 in frontend)
@@ -208,7 +175,6 @@ export class SilverbackAnchorService {
       );
 
       await opsClient.publishBuilder(tx2Builder);
-      console.log(`✅ TX2 completed - protocol fee collected`);
 
       // Calculate pool creator fee (their fee percentage)
       const poolCreatorFee = amountInBigInt - (amountInBigInt * (10000n - BigInt(quote.feeBps))) / 10000n;
@@ -224,8 +190,6 @@ export class SilverbackAnchorService {
         protocolFee: protocolFee,
         userAddress,
       });
-
-      console.log(`✅ Silverback anchor swap completed successfully`);
 
       return {
         success: true,

@@ -178,8 +178,63 @@ router.get('/creator/:address', async (req, res) => {
 });
 
 /**
+ * GET /api/anchor-pools/:poolAddress/swaps
+ * Get swap history for an anchor pool
+ * NOTE: Must be defined BEFORE /:tokenA/:tokenB to avoid route conflicts
+ */
+router.get('/:poolAddress/swaps', async (req, res) => {
+  try {
+    const { poolAddress } = req.params;
+    const { limit = 100 } = req.query;
+
+    const repository = getAnchorRepository();
+    const swaps = await repository.getAnchorSwapHistory(poolAddress, parseInt(limit));
+
+    res.json({
+      success: true,
+      swaps,
+      count: swaps.length,
+    });
+  } catch (error) {
+    console.error('Get swaps error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/anchor-pools/:poolAddress/volume
+ * Get 24h volume for an anchor pool
+ * NOTE: Must be defined BEFORE /:tokenA/:tokenB to avoid route conflicts
+ */
+router.get('/:poolAddress/volume', async (req, res) => {
+  try {
+    const { poolAddress } = req.params;
+
+    const repository = getAnchorRepository();
+    const volumeData = await repository.getAnchor24hVolume(poolAddress);
+
+    res.json({
+      success: true,
+      volume24h: volumeData?.total_volume_in || '0',
+      swapCount: volumeData?.swap_count || 0,
+      feesCollected: volumeData?.total_fees || '0',
+    });
+  } catch (error) {
+    console.error('Get volume error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/anchor-pools/:tokenA/:tokenB
  * Get all anchor pools for a specific token pair
+ * NOTE: Must be LAST among /:param routes to avoid catching /swaps and /volume
  */
 router.get('/:tokenA/:tokenB', async (req, res) => {
   try {
@@ -548,58 +603,6 @@ router.post('/:poolAddress/update-status', async (req, res) => {
     });
   } catch (error) {
     console.error('Update status error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/anchor-pools/:poolAddress/swaps
- * Get swap history for an anchor pool
- */
-router.get('/:poolAddress/swaps', async (req, res) => {
-  try {
-    const { poolAddress } = req.params;
-    const { limit = 100 } = req.query;
-
-    const repository = getAnchorRepository();
-    const swaps = await repository.getAnchorSwapHistory(poolAddress, parseInt(limit));
-
-    res.json({
-      success: true,
-      swaps,
-      count: swaps.length,
-    });
-  } catch (error) {
-    console.error('Get swaps error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/anchor-pools/:poolAddress/volume
- * Get 24h volume for an anchor pool
- */
-router.get('/:poolAddress/volume', async (req, res) => {
-  try {
-    const { poolAddress } = req.params;
-
-    const repository = getAnchorRepository();
-    const volumeData = await repository.getAnchor24hVolume(poolAddress);
-
-    res.json({
-      success: true,
-      volume24h: volumeData?.total_volume_in || '0',
-      swapCount: volumeData?.swap_count || 0,
-      feesCollected: volumeData?.total_fees || '0',
-    });
-  } catch (error) {
-    console.error('Get volume error:', error);
     res.status(500).json({
       success: false,
       error: error.message,

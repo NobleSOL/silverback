@@ -127,42 +127,7 @@ router.post('/best-quote', async (req, res) => {
   }
 });
 
-/**
- * POST /api/aggregator/add-provider
- * Add a new FX provider at runtime
- *
- * Body:
- * {
- *   id: "provider-id",
- *   name: "Provider Name",
- *   baseUrl: "https://provider.com/fx"
- * }
- */
-router.post('/add-provider', async (req, res) => {
-  try {
-    const { id, name, baseUrl } = req.body;
-
-    if (!id || !baseUrl) {
-      return res.status(400).json({
-        ok: false,
-        error: 'Missing required fields: id, baseUrl'
-      });
-    }
-
-    const aggregator = getFXAggregator();
-    aggregator.addProvider({ id, name: name || id, baseUrl });
-
-    res.json({
-      ok: true,
-      message: `Provider ${id} added successfully`
-    });
-  } catch (error) {
-    console.error('Error adding provider:', error);
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-  }
-});
+// NOTE: /add-provider endpoint removed for security
+// Providers should be added via environment configuration
 
 export default router;
