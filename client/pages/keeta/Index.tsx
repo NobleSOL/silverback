@@ -219,7 +219,14 @@ export default function KeetaIndex() {
         const tokenInSymbol = fromTokenInfo?.symbol || 'Token';
         const tokenOutSymbol = toTokenInfo?.symbol || 'Token';
 
-        const result = await executeFXSwap(fxQuote);
+        // Get userClient from Keythings for signing
+        const provider = getKeythingsProvider();
+        if (!provider) {
+          throw new Error('Keythings wallet not available');
+        }
+        const userClient = await provider.getUserClient();
+
+        const result = await executeFXSwap(fxQuote, userClient);
 
         if (result.success) {
           toast({

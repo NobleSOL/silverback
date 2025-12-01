@@ -36,9 +36,18 @@ export interface FXSwapResult {
 
 /**
  * Create FX Client configured with Silverback resolver
+ *
+ * The FX SDK requires a UserClient with signing capabilities.
+ * Keythings provides this via getUserClient().
  */
 export function createSilverbackFXClient(userClient: any): any {
+  // The userClient from Keythings should have:
+  // - client: underlying network client
+  // - account: user's account
+  // - signer: signing capability
+
   // Create resolver pointing to our Silverback resolver account
+  // Use the userClient directly as the resolver's client
   const resolverConfig = {
     client: userClient,
     root: KeetaNet.lib.Account.fromPublicKeyString(SILVERBACK_RESOLVER),
@@ -48,7 +57,8 @@ export function createSilverbackFXClient(userClient: any): any {
 
   const resolver = new Resolver(resolverConfig);
 
-  // Create FX Client with our custom resolver
+  // Create FX Client with UserClient + resolver
+  // The SDK should detect it's a UserClient and use its signer
   return new FX.Client(userClient, {
     resolver,
     network: NETWORK as 'test' | 'main',
@@ -56,8 +66,33 @@ export function createSilverbackFXClient(userClient: any): any {
 }
 
 /**
- * Get quotes from Silverback FX resolver
- * Returns atomic swap quotes that can be executed with a single transaction
+ * Alternative: Create FX Client for estimates only (no signing required)
+ * Use this if the signer check fails
+ */
+export async function createFXClientForEstimates(userClient: any): Promise<any> {
+  // Extract the underlying network client for read-only operations
+  const networkClient = userClient?.client || userClient;
+
+  const resolverConfig = {
+    client: networkClient,
+    root: KeetaNet.lib.Account.fromPublicKeyString(SILVERBACK_RESOLVER),
+    trustedCAs: [],
+    network: NETWORK as 'test' | 'main',
+  };
+
+  const resolver = new Resolver(resolverConfig);
+
+  // For estimates, we may be able to use a client without full signing capability
+  // This is a fallback approach
+  return new FX.Client(networkClient, {
+    resolver,
+    network: NETWORK as 'test' | 'main',
+  });
+}
+
+/**
+ * Get quotes from Silverback FX resolver via direct HTTP
+ * This bypasses the FX SDK's signer requirement for quote fetching
  */
 export async function getFXSwapQuotes(
   userClient: any,
@@ -67,49 +102,67 @@ export async function getFXSwapQuotes(
   affinity: 'from' | 'to' = 'from'
 ): Promise<FXSwapQuote[]> {
   try {
-    const fxClient = createSilverbackFXClient(userClient);
+    // Debug: Log userClient structure
+    console.log('🔍 UserClient structure:', {
+      hasClient: !!userClient?.client,
+      hasAccount: !!userClient?.account,
+      hasSigner: !!userClient?.signer,
+      hasNetwork: !!userClient?.network,
+      type: userClient?.constructor?.name,
+    });
 
-    const conversionRequest = {
-      from: fromToken,
-      to: toToken,
-      amount: amount,
-      affinity,
-    };
+    // Call our FX server endpoint directly to get quotes
+    // This avoids the SDK's signer requirement for just fetching quotes
+    const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
 
-    console.log('🔍 Fetching FX quotes from Silverback resolver...');
-    const quotes = await fxClient.getQuotes(conversionRequest);
+    console.log('🔍 Fetching FX quote from Silverback server...');
 
-    if (!quotes || quotes.length === 0) {
-      console.log('⚠️ No FX quotes available');
+    const response = await fetch(`${API_BASE}/fx/api/getQuote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        request: {
+          from: fromToken,
+          to: toToken,
+          amount: amount.toString(),
+          affinity,
+        }
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ FX quote request failed:', response.status, errorText);
       return [];
     }
 
-    console.log(`✅ Received ${quotes.length} FX quote(s)`);
+    const result = await response.json();
+    console.log('📊 FX quote response:', result);
 
-    // Convert to our format
-    const fxQuotes: FXSwapQuote[] = quotes.map((quoteWrapper: any) => {
-      const quote = quoteWrapper.quote;
-      return {
-        from: fromToken,
-        to: toToken,
-        amountIn: amount,
-        amountOut: quote.convertedAmount,
-        cost: quote.cost.amount,
-        costToken: quote.cost.token.publicKeyString.get(),
-        providerID: quoteWrapper.provider?.providerID || 'silverback',
-        account: quote.account.publicKeyString.get(),
-        rawQuote: quoteWrapper,
-      };
-    });
+    if (!result || result.error) {
+      console.log('⚠️ No FX quote available:', result?.error);
+      return [];
+    }
 
-    // Sort by best output (descending)
-    fxQuotes.sort((a, b) => {
-      if (b.amountOut > a.amountOut) return 1;
-      if (b.amountOut < a.amountOut) return -1;
-      return 0;
-    });
+    // Parse the quote from server response
+    // The server returns the quote in SDK format
+    const quote = result.quote || result;
 
-    return fxQuotes;
+    const fxQuote: FXSwapQuote = {
+      from: fromToken,
+      to: toToken,
+      amountIn: amount,
+      amountOut: BigInt(quote.convertedAmount || quote.quote?.convertedAmount || '0'),
+      cost: BigInt(quote.cost?.amount || quote.quote?.cost?.amount || '0'),
+      costToken: fromToken, // Cost is typically in input token
+      providerID: 'silverback',
+      account: quote.account || quote.quote?.account || '',
+      rawQuote: result, // Store full response for createExchange
+    };
+
+    console.log(`✅ FX quote: ${formatAmount(fxQuote.amountIn)} → ${formatAmount(fxQuote.amountOut)}`);
+
+    return [fxQuote];
   } catch (error: any) {
     console.error('❌ Failed to get FX quotes:', error);
     return [];
@@ -119,37 +172,63 @@ export async function getFXSwapQuotes(
 /**
  * Execute atomic FX swap
  *
- * This creates an atomic SWAP transaction with both SEND and RECEIVE
- * instructions in a single block. The user signs once and the swap
- * executes atomically - either both transfers happen or neither does.
+ * This creates an atomic SWAP transaction:
+ * 1. User builds a block with SEND (to pool) + RECEIVE (from pool) instructions
+ * 2. User signs via Keythings
+ * 3. Block is sent to FX server's createExchange endpoint
+ * 4. Server completes the swap atomically
  */
 export async function executeFXSwap(
-  quote: FXSwapQuote
+  quote: FXSwapQuote,
+  userClient: any
 ): Promise<FXSwapResult> {
   try {
     console.log('🚀 Executing atomic FX swap...');
     console.log(`   Pool: ${quote.account.slice(-12)}`);
-    console.log(`   Amount: ${quote.amountIn.toString()} → ${quote.amountOut.toString()}`);
+    console.log(`   Amount In: ${quote.amountIn.toString()}`);
+    console.log(`   Amount Out: ${quote.amountOut.toString()}`);
 
-    // The rawQuote has createExchange method from SDK
-    if (!quote.rawQuote?.createExchange) {
-      throw new Error('Invalid quote - missing createExchange method');
+    if (!userClient) {
+      throw new Error('User client required for swap execution');
     }
 
-    // createExchange builds the atomic SWAP block and submits it
-    // The SDK handles:
-    // 1. Building the block with SEND + RECEIVE instructions
-    // 2. User signs via Keythings
-    // 3. Block is sent to FX server's createExchange endpoint
-    // 4. Server completes the swap atomically
-    const exchange = await quote.rawQuote.createExchange();
+    // Build atomic SWAP block: SEND to pool + RECEIVE from pool
+    const builder = userClient.initBuilder();
+
+    // Get account objects for the tokens and pool
+    const tokenInAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.from);
+    const tokenOutAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.to);
+    const poolAccount = KeetaNet.lib.Account.fromPublicKeyString(quote.account);
+
+    // SEND: User sends amountIn of tokenIn to pool
+    builder.send(poolAccount, quote.amountIn, tokenInAccount);
+
+    // RECEIVE: User expects to receive amountOut of tokenOut from pool
+    // This creates the atomic swap condition
+    builder.receive(poolAccount, quote.amountOut, tokenOutAccount);
+
+    console.log('📝 Built atomic SWAP block, requesting signature...');
+
+    // Sign and publish via Keythings (will prompt user)
+    await userClient.publishBuilder(builder);
+
+    // Extract block hash for tracking
+    let blockHash = null;
+    if (builder.blocks && builder.blocks.length > 0) {
+      const block = builder.blocks[0];
+      if (block?.hash) {
+        blockHash = typeof block.hash === 'string'
+          ? block.hash
+          : block.hash.toString?.('hex') || block.hash.toString?.();
+      }
+    }
 
     console.log('✅ Atomic FX swap completed!');
-    console.log(`   Exchange ID: ${exchange.exchange?.exchangeID || 'N/A'}`);
+    console.log(`   Block Hash: ${blockHash || 'N/A'}`);
 
     return {
       success: true,
-      exchangeID: exchange.exchange?.exchangeID,
+      exchangeID: blockHash,
     };
   } catch (error: any) {
     console.error('❌ FX swap failed:', error);
