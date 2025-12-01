@@ -5,6 +5,10 @@ import express from 'express';
 import { getAnchorRepository } from '../db/anchor-repository.js';
 import { createStorageAccount, createLPToken, getOpsClient } from '../utils/client.js';
 import { getPairKey } from '../utils/constants.js';
+import { updateFXResolverMetadata } from '../services/publish-fx-resolver.js';
+
+// Resolver account address for Silverback FX
+const RESOLVER_ACCOUNT = process.env.FX_RESOLVER_ACCOUNT || 'keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm';
 
 const router = express.Router();
 
@@ -295,9 +299,23 @@ router.post('/create', async (req, res) => {
 
     console.log(`✅ Anchor pool saved to database`);
 
+    // Auto-publish updated FX resolver metadata (non-blocking)
+    console.log(`🔄 Auto-publishing FX resolver metadata for new pool...`);
+    updateFXResolverMetadata(RESOLVER_ACCOUNT)
+      .then(result => {
+        if (result.success) {
+          console.log(`✅ FX resolver metadata updated automatically`);
+        } else {
+          console.warn(`⚠️ FX resolver update failed:`, result.error);
+        }
+      })
+      .catch(err => {
+        console.warn(`⚠️ FX resolver update error:`, err.message);
+      });
+
     res.json({
       success: true,
-      message: 'Anchor pool created successfully',
+      message: 'Anchor pool created successfully. FX resolver updating in background.',
       pool: {
         poolAddress,
         lpTokenAddress,
