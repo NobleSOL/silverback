@@ -113,11 +113,12 @@ export async function getFXSwapQuotes(
 
     // Call our FX server endpoint directly to get quotes
     // This avoids the SDK's signer requirement for just fetching quotes
-    const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
+    // FX routes are mounted at /fx, not /api/fx
+    const FX_BASE = `${window.location.origin}/fx`;
 
     console.log('🔍 Fetching FX quote from Silverback server...');
 
-    const response = await fetch(`${API_BASE}/fx/api/getQuote`, {
+    const response = await fetch(`${FX_BASE}/api/getQuote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
