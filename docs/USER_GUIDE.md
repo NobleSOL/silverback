@@ -85,19 +85,24 @@ Silverback DEX operates on two separate networks:
 3. The app will find the best pool automatically
 4. Click **"Swap"** and confirm in Keythings wallet
 
-#### Option 2: FX Anchor Swaps (Best Rates)
+#### Option 2: FX Anchor Swaps (Recommended - Best Rates)
+Silverback pools are now discoverable directly in **Keythings wallet**!
+
+**Via Keythings Wallet:**
+1. Open Keythings wallet
+2. Go to **Swap** tab
+3. Add Silverback resolver: `keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm`
+4. Select your token pair
+5. Wallet automatically finds best rate across all providers
+6. Confirm swap - executes as atomic SWAP transaction
+
+**Via Silverback UI:**
 1. Navigate to **Keeta → Anchor** page
 2. Select your token pair
 3. Enter swap amount
-4. View quotes from:
-   - **FX Anchor** (official Keeta network anchors) - shown in blue
-   - **Silverback** (user-created pools) - shown in orange
-5. The best rate is automatically selected
+4. View quotes from all available providers
+5. Best rate is automatically selected
 6. Click **"Swap"** and confirm
-
-**Two-Transaction Process**:
-- **TX1**: You sign to send tokens to the pool
-- **TX2**: Backend automatically sends you the output tokens
 
 ---
 
@@ -338,7 +343,8 @@ A:
 **Q: Are there trading fees?**
 A:
 - **Swap fees**: 0.3% on AMM swaps (goes to liquidity providers)
-- **Anchor swaps**: Variable (0.01% - 10% depending on pool)
+- **Anchor pool creator fee**: Variable (0.01% - 10% depending on pool)
+- **Protocol fee**: 0.05% on all FX anchor swaps (collected by Silverback)
 - **Gas fees**: Paid in ETH (Base) or KTA (Keeta)
 
 ### Liquidity & Pools

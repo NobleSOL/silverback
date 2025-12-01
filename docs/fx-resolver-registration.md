@@ -1,231 +1,186 @@
 # FX Resolver Registration for Silverback Anchor Pools
 
-This guide explains how to register Silverback anchor pools with the Keeta FX resolver, enabling discovery through Keeta wallet and other FX-enabled applications.
+This guide explains how Silverback anchor pools integrate with the Keeta FX resolver system.
 
-## Overview
+## Current Status
 
-**What this enables:**
-- ✅ Silverback pools discoverable in Keeta wallet
-- ✅ Proper SWAP transaction display in explorer
-- ✅ Automatic liquidity aggregation across all Keeta wallets
-- ✅ Protocol fee collection (0.05% on all swaps)
-- ✅ Pool creators still earn their custom fees
+| Component | Status | Details |
+|-----------|--------|---------|
+| FX Anchor SDK Server | ✅ Live | Running at `https://dexkeeta.onrender.com/fx/` |
+| Resolver Registration | ✅ Registered | Account: `keeta_asnqu5qxwxq2r...` |
+| Protocol Fees (0.05%) | ✅ Active | Tracked per swap, collectible to treasury |
+| Auto-Publish | ✅ Enabled | New pools automatically update resolver |
 
-**Current Status:**
-- ✅ FX Anchor SDK server implemented
-- ✅ Protocol fees (0.05%) integrated
-- ✅ Server running on port 3001
-- ⏳ Pending: Resolver registration
+## Key Accounts
+
+```
+Resolver Account: keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
+Treasury Account: keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy
+```
 
 ## Architecture
 
-### FX Anchor Server
-- **Location**: `server/keeta-impl/services/fx-anchor-server.js`
-- **Port**: 3001 (configurable via `FX_ANCHOR_PORT` env variable)
-- **SDK**: `@keetanetwork/anchor` FX.Server
+### FX Server Endpoints
 
-### Endpoints Created
-The FX Server automatically creates these endpoints:
-
-- `GET /` - Service metadata (conversion pairs, endpoints)
-- `POST /api/getQuote` - Get quote for conversion
-- `POST /api/createExchange` - Execute swap (creates SWAP transaction)
-- `POST /api/getExchangeStatus` - Check swap status
-- `POST /api/getEstimate` - Get estimate (optional)
-
-## Registration Steps
-
-### 1. Set up Resolver Account
-
-The FX resolver uses a storage account to publish service metadata.
-
-**Option A: Create new storage account**
-```javascript
-// server/keeta-impl/services/resolver-setup.js
-import { getOpsClient } from '../utils/client.js';
-
-async function createResolverAccount() {
-  const opsClient = await getOpsClient();
-  const builder = opsClient.initBuilder();
-
-  // Generate storage account for resolver
-  const pending = builder.generateIdentifier(
-    opsClient.account,
-    'storage' // Storage account type
-  );
-
-  const { identifier: resolverAccount } = await pending.commit();
-
-  console.log('Resolver Account:', resolverAccount.publicKeyString.get());
-  return resolverAccount;
-}
+```
+https://dexkeeta.onrender.com/fx/
+├── GET  /                           # Resolver metadata
+├── POST /api/getEstimate           # Quick rate estimate (no signature)
+├── POST /api/getQuote              # Signed quote for swap
+├── POST /api/createExchange        # Execute atomic swap
+└── GET  /api/getExchangeStatus/:id # Check swap status
 ```
 
-**Option B: Use existing storage account**
-- If you already have a resolver account, use its address
+### Request/Response Examples
 
-### 2. Publish Service Metadata
-
-Service metadata tells the resolver:
-- Which token pairs Silverback supports
-- Where the FX endpoints are located
-- Provider ID ("silverback")
-
-```javascript
-import { startSilverbackFXAnchorServer } from './fx-anchor-server.js';
-
-async function publishMetadata() {
-  // Start FX server
-  const server = await startSilverbackFXAnchorServer(3001);
-
-  // Get service metadata
-  const metadata = await server.serviceMetadata();
-
-  console.log('Service Metadata:', JSON.stringify(metadata, null, 2));
-
-  // Metadata format:
-  // {
-  //   from: [
-  //     {
-  //       currencyCodes: ["keeta_token1..."],
-  //       to: ["keeta_token2..."]
-  //     }
-  //   ],
-  //   operations: {
-  //     getQuote: "http://yourserver:3001/api/getQuote",
-  //     createExchange: "http://yourserver:3001/api/createExchange",
-  //     getExchangeStatus: "http://yourserver:3001/api/getExchangeStatus/{id}"
-  //   }
-  // }
-
-  return metadata;
-}
-```
-
-### 3. Register with Resolver
-
-**Production URL:** Your FX server must be accessible at a public URL
-- Current: `https://dexkeeta.onrender.com:3001`
-- Make sure port 3001 is open and accessible
-
-**Register the provider:**
-```javascript
-// This requires resolver account access
-// Contact Keeta Network team for registration process
-async function registerWithResolver() {
-  // Provider registration details
-  const providerInfo = {
-    id: 'silverback',
-    url: 'https://dexkeeta.onrender.com:3001',
-    metadata: await publishMetadata()
-  };
-
-  // Submit to FX resolver
-  // (Exact process depends on Keeta's resolver implementation)
-  console.log('Provider Info:', providerInfo);
-}
-```
-
-## Testing
-
-### Test FX Server Locally
-
+**Get Estimate:**
 ```bash
-# Start server
-pnpm dev
-
-# Server should log:
-# 🔗 Starting Silverback FX Anchor Server...
-# ✅ FX Anchor Server running on port 3001
-```
-
-### Test Endpoints
-
-```bash
-# Get service metadata
-curl http://localhost:3001/
-
-# Get quote (example)
-curl -X POST http://localhost:3001/api/getQuote \
+curl -X POST https://dexkeeta.onrender.com/fx/api/getEstimate \
   -H "Content-Type: application/json" \
   -d '{
-    "request": {
-      "from": "keeta_tokenA...",
-      "to": "keeta_tokenB...",
-      "amount": "1000000000",
-      "affinity": "from"
-    }
+    "from": "keeta_anyiff4v34alvumupagmdyosydeq24lc4def5mrpmmyhx3j6vj2uucckeqn52",
+    "to": "keeta_ant6bsl2obpmreopln5e242s3ihxyzjepd6vbkeoz3b3o3pxjtlsx3saixkym",
+    "amount": "1000000000",
+    "affinity": "from"
   }'
 ```
 
-### Test with Keeta Wallet
+**Get Quote:**
+```bash
+curl -X POST https://dexkeeta.onrender.com/fx/api/getQuote \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "keeta_anyiff4v34alvumupagmdyosydeq24lc4def5mrpmmyhx3j6vj2uucckeqn52",
+    "to": "keeta_ant6bsl2obpmreopln5e242s3ihxyzjepd6vbkeoz3b3o3pxjtlsx3saixkym",
+    "amount": "1000000000",
+    "affinity": "from"
+  }'
+```
 
-Once registered with resolver:
+## Fee Structure
 
-1. Open Keeta wallet
-2. Navigate to Swap interface
-3. Select token pair that has Silverback pool
-4. Keeta wallet should discover Silverback as liquidity provider
-5. Execute swap - should display as "SWAP" in explorer
+| Fee Type | Rate | Recipient | Collection |
+|----------|------|-----------|------------|
+| Pool Creator Fee | 0.3% (default) | Pool Creator | Stays in pool |
+| Protocol Fee | 0.05% | Silverback Treasury | Via fee sweeper |
 
-## Benefits
+### How Fees Work
 
-### For Users
-- Access Silverback pools from any FX-enabled wallet
-- Proper SWAP transaction display
-- Competitive rates from user-created pools
+1. User swaps 1 KTA for WAVE
+2. Pool Creator Fee (0.3%) is deducted first
+3. Protocol Fee (0.05%) is deducted from output
+4. User receives output minus both fees
+5. Protocol fee stays in pool until swept
 
-### For Pool Creators
-- More swap volume from FX discovery
-- Earn custom fees on all swaps
-- Pools visible in Keeta ecosystem
+## Admin Operations
 
-### For Silverback
-- 0.05% protocol fee on all swaps
-- Platform sustainability
-- Ecosystem growth
+All commands run on Render shell.
 
-## Next Steps
+### Fee Management
 
-1. **Deploy to production** - Ensure port 3001 accessible
-2. **Contact Keeta team** - Get resolver registration process
-3. **Submit provider info** - Register as "silverback" provider
-4. **Test with Keeta wallet** - Verify pool discovery
-5. **Monitor fees** - Track protocol fee collection
+```bash
+# Check pending protocol fees
+node server/keeta-impl/services/fee-sweeper.js status
+
+# Collect fees to treasury
+node server/keeta-impl/services/fee-sweeper.js sweep
+```
+
+### Resolver Management
+
+```bash
+# Update resolver metadata (after manually adding pools)
+node server/keeta-impl/services/publish-fx-resolver.js update keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
+
+# Create new resolver account (one-time setup)
+node server/keeta-impl/services/publish-fx-resolver.js publish
+```
+
+### Database Migrations
+
+```bash
+# Add protocol_fee column (if missing)
+node -e "import('pg').then(async ({default: pg}) => { const pool = new pg.Pool({connectionString: process.env.DATABASE_URL, ssl: {rejectUnauthorized: false}}); await pool.query(\"ALTER TABLE anchor_swaps ADD COLUMN IF NOT EXISTS protocol_fee VARCHAR(255) DEFAULT '0'\"); console.log('Done'); pool.end(); })"
+```
+
+## Auto-Publish Feature
+
+When a new anchor pool is created via the API, the FX resolver metadata is automatically updated to include the new token pair. This happens asynchronously after pool creation.
+
+**How it works:**
+1. User creates pool via `/api/anchor-pools/create`
+2. Pool is saved to database
+3. `updateFXResolverMetadata()` is called in background
+4. Resolver metadata is re-published to blockchain
+5. New pool becomes discoverable in wallets
+
+**If auto-publish fails:**
+- The pool is still created
+- Run manual update command (see above)
+- Check Render logs for errors
+
+## Troubleshooting
+
+### Swaps Not Working
+
+1. Check FX server is responding:
+   ```bash
+   curl https://dexkeeta.onrender.com/fx/
+   ```
+
+2. Check pool has liquidity:
+   ```bash
+   curl https://dexkeeta.onrender.com/api/anchor-pools
+   ```
+
+3. Check Render logs for errors
+
+### New Pool Not Visible in Wallet
+
+1. Wait 1-2 minutes for blockchain propagation
+2. If still not visible, manually update resolver:
+   ```bash
+   node server/keeta-impl/services/publish-fx-resolver.js update keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
+   ```
+
+### Fees Not Collecting
+
+1. Check pending fees:
+   ```bash
+   node server/keeta-impl/services/fee-sweeper.js status
+   ```
+
+2. Run sweep manually:
+   ```bash
+   node server/keeta-impl/services/fee-sweeper.js sweep
+   ```
+
+3. Check database has `protocol_fee` column:
+   ```bash
+   node -e "import('pg').then(async ({default: pg}) => { const pool = new pg.Pool({connectionString: process.env.DATABASE_URL, ssl: {rejectUnauthorized: false}}); const r = await pool.query('SELECT column_name FROM information_schema.columns WHERE table_name = $$anchor_swaps$$'); console.log(r.rows.map(r => r.column_name)); pool.end(); })"
+   ```
 
 ## Environment Variables
 
 ```env
-# FX Anchor Server Port (default: 3001)
-FX_ANCHOR_PORT=3001
+# Required
+OPS_SEED=<hex seed for operations account>
+DATABASE_URL=<postgresql connection string>
 
-# Network (test, main, staging, dev)
-VITE_KEETA_NETWORK=test
-
-# OPS account seed (for signing)
-OPS_SEED=your_ops_seed_hex
+# Optional (defaults shown)
+FX_RESOLVER_ACCOUNT=keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
+FX_ANCHOR_URL=https://dexkeeta.onrender.com/fx
+VITE_KEETA_NETWORK=main
 ```
 
-## Troubleshooting
+## Files Reference
 
-**Server won't start:**
-- Check OPS_SEED is set correctly
-- Verify port 3001 is not in use
-- Check logs for specific errors
-
-**No pools discovered:**
-- Ensure at least one anchor pool exists
-- Check pool status is 'active'
-- Verify pool has minimum liquidity
-
-**Quotes failing:**
-- Check pool reserves are sufficient
-- Verify token addresses match exactly
-- Review server logs for errors
-
-## Support
-
-For resolver registration assistance:
-- Keeta Network Discord
-- Keeta Developer Documentation
-- support@keetanetwork.com
+| File | Purpose |
+|------|---------|
+| `server/keeta-impl/services/fx-anchor-server.js` | FX SDK server, handles quotes & swaps |
+| `server/keeta-impl/services/anchor-service.js` | Pool quote calculation |
+| `server/keeta-impl/services/publish-fx-resolver.js` | Publish/update resolver metadata |
+| `server/keeta-impl/services/fee-sweeper.js` | Collect protocol fees to treasury |
+| `server/keeta-impl/routes/anchor-pools.js` | Pool CRUD API routes |
+| `server/keeta-impl/db/anchor-repository.js` | Database operations |
+| `server/keeta-impl/db/anchor-schema.sql` | Database schema |

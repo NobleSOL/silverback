@@ -219,25 +219,77 @@ Frontend deployable to Netlify (config in `netlify.toml`).
 
 ## FX Anchor Integration
 
-The Anchor page (`/pages/keeta/Anchor.tsx`) implements a **trading aggregator** using the `@keetanetwork/anchor` SDK:
+The FX system enables Silverback anchor pools to be discovered and used via Keeta wallets.
 
-### How It Works
-1. User selects tokens and amount
-2. Client queries ALL registered FX anchor providers on Keeta network
-3. Displays best quote across all providers
-4. Executes atomic swap through selected anchor
+### Architecture
 
-### Strategic Value
-- **Aggregator Platform**: Show users best rates across all Keeta anchors
-- **Future Liquidity Provider**: When BACK token launches, run own anchor
-- **Fee Income**: Earn from both aggregation volume + anchor swaps
+```
+server/keeta-impl/
+├── services/
+│   ├── fx-anchor-server.js      # FX SDK server (handles quotes & swaps)
+│   ├── anchor-service.js        # Pool quote aggregation
+│   ├── publish-fx-resolver.js   # Publish resolver metadata
+│   └── fee-sweeper.js           # Collect protocol fees to treasury
+├── routes/
+│   ├── anchor-pools.js          # Pool CRUD operations
+│   └── aggregator.js            # Multi-provider quote aggregation
+└── db/
+    ├── anchor-schema.sql        # Database schema
+    └── anchor-repository.js     # Data access layer
+```
+
+### Key Accounts (Testnet)
+- **Resolver**: `keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm`
+- **Treasury**: `keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy`
+- **OPS**: Configured via `OPS_SEED` environment variable
+
+### Fee Structure
+- **Pool Creator Fee**: 0.3% (default, configurable per pool)
+- **Protocol Fee**: 0.05% (collected by Silverback)
+
+### FX Endpoints (Production)
+```
+https://dexkeeta.onrender.com/fx/
+├── /                           # Resolver metadata
+├── /api/getEstimate           # Quick rate estimate
+├── /api/getQuote              # Signed quote for swap
+├── /api/createExchange        # Execute atomic swap
+└── /api/getExchangeStatus/:id # Check swap status
+```
+
+### Admin Commands (Run on Render)
+
+```bash
+# Check pending protocol fees
+node server/keeta-impl/services/fee-sweeper.js status
+
+# Collect fees to treasury
+node server/keeta-impl/services/fee-sweeper.js sweep
+
+# Update resolver metadata (after adding pools)
+node server/keeta-impl/services/publish-fx-resolver.js update keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
+
+# Publish new resolver (creates new account)
+node server/keeta-impl/services/publish-fx-resolver.js publish
+```
+
+### Auto-Publish Feature
+When a new anchor pool is created, the FX resolver metadata is automatically updated to include the new token pair. No manual intervention required.
+
+### How Swaps Work
+1. Wallet queries `/fx/api/getQuote` for best rate
+2. User approves swap in wallet
+3. Wallet calls `/fx/api/createExchange` with signed quote
+4. SDK creates atomic SWAP transaction on blockchain
+5. Swap is recorded to database with protocol fee
+6. Fee sweeper collects accumulated fees to treasury
 
 ### Key Files
-- `client/lib/keeta-anchor.ts` - FX Anchor SDK integration
+- `client/lib/keeta-anchor.ts` - FX Anchor SDK client integration
 - `client/pages/keeta/Anchor.tsx` - Trading UI
-- `server/keeta-impl/utils/anchor.js` - Server-side anchor placeholders
+- `server/keeta-impl/services/fx-anchor-server.js` - FX SDK server
 
-**Status**: UI ready, awaiting anchor providers on mainnet. Currently on testnet (`api.test.keeta.com`).
+**Status**: ✅ Fully operational on testnet. Resolver registered, swaps working, fee collection active.
 
 ## Important Notes
 
