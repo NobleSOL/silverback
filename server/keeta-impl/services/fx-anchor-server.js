@@ -51,21 +51,37 @@ async function recordFXSwap(postData, result, anchorService) {
     }
 
     // Get quote to find pool details
-    const amountIn = BigInt(amount);
+    // Handle hex amounts (SDK sends as '0x...')
+    let amountIn;
+    try {
+      amountIn = BigInt(amount);
+      console.log('📝 Parsed amountIn:', amountIn.toString());
+    } catch (e) {
+      console.error('❌ Failed to parse amount:', amount, e.message);
+      return;
+    }
+
+    console.log('📝 Calling getQuote for swap recording...');
     const quote = await anchorService.getQuote(tokenIn, tokenOut, amountIn, 9, 9);
+    console.log('📝 getQuote returned:', quote ? 'quote found' : 'null');
 
     if (!quote) {
       console.log('⚠️ Cannot find pool for swap recording');
       return;
     }
 
+    console.log('📝 Quote details:', { poolAddress: quote.poolAddress?.slice(-12), amountOut: quote.amountOut });
+
     // Calculate amounts
     const amountOutBigInt = BigInt(quote.amountOut);
     const protocolFee = (amountOutBigInt * anchorService.PROTOCOL_FEE_BPS) / 10000n;
     const poolCreatorFee = amountIn - (amountIn * (10000n - BigInt(quote.feeBps))) / 10000n;
 
+    console.log('📝 Calculated fees:', { protocolFee: protocolFee.toString(), poolCreatorFee: poolCreatorFee.toString() });
+
     // Record to database
     const repository = getAnchorRepository();
+    console.log('📝 Recording swap to database...');
     await repository.recordAnchorSwap({
       poolAddress: quote.poolAddress,
       tokenIn: tokenIn,
