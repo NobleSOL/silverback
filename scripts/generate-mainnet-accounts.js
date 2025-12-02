@@ -60,11 +60,10 @@ function generateAccount(type) {
   // Generate 24-word mnemonic (256 bits of entropy)
   const mnemonic = bip39.generateMnemonic(256);
 
-  // Convert mnemonic to seed (BIP39 standard)
-  const seed = bip39.mnemonicToSeedSync(mnemonic);
-
-  // Use first 32 bytes as Keeta seed
-  const keetaSeed = seed.slice(0, 32);
+  // Keeta wallet uses the mnemonic ENTROPY directly (not BIP39 PBKDF2 seed)
+  // 24 words = 256 bits = 32 bytes of entropy
+  const entropy = bip39.mnemonicToEntropy(mnemonic);
+  const keetaSeed = Buffer.from(entropy, 'hex');
 
   // Create Keeta account
   const account = KeetaNet.lib.Account.fromSeed(keetaSeed, 0);
@@ -114,9 +113,9 @@ function recoverFromMnemonic(mnemonic) {
     throw new Error('Invalid mnemonic phrase');
   }
 
-  // Convert mnemonic to seed
-  const seed = bip39.mnemonicToSeedSync(mnemonic);
-  const keetaSeed = seed.slice(0, 32);
+  // Keeta wallet uses the mnemonic ENTROPY directly (not BIP39 PBKDF2 seed)
+  const entropy = bip39.mnemonicToEntropy(mnemonic);
+  const keetaSeed = Buffer.from(entropy, 'hex');
 
   // Create account
   const account = KeetaNet.lib.Account.fromSeed(keetaSeed, 0);
