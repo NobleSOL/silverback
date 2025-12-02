@@ -18,8 +18,8 @@ import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTok
 import { getSwapQuote as getPoolQuote } from "@/lib/keeta-client";
 import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keeta-anchor";
 
-// KTA logo URL
-const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+// KTA logo URL (Kraken CDN)
+const KTA_LOGO = "https://assets.kraken.com/marketing/web/icons-uni-webp/s_kta.webp?i=kds";
 const getTokenLogo = (symbol: string, defaultUrl?: string) => {
   if (symbol === "KTA") return KTA_LOGO;
   return defaultUrl;

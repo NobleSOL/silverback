@@ -19,8 +19,8 @@ import { KeetaPoolCard, KeetaPoolCardData } from "@/components/keeta/KeetaPoolCa
 // API base URL
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
 
-// KTA logo URL
-const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+// KTA logo URL (Kraken CDN)
+const KTA_LOGO = "https://assets.kraken.com/marketing/web/icons-uni-webp/s_kta.webp?i=kds";
 
 const getTokenLogo = (symbol: string, defaultUrl?: string) => {
   if (symbol === "KTA") return KTA_LOGO;

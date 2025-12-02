@@ -10,8 +10,8 @@ export interface KeetaToken {
   logoUrl?: string;
 }
 
-// KTA logo URL (using Keeta logo)
-const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
+// KTA logo URL (Kraken CDN)
+const KTA_LOGO = "https://assets.kraken.com/marketing/web/icons-uni-webp/s_kta.webp?i=kds";
 
 export default function KeetaTokenSelector({
   open,
