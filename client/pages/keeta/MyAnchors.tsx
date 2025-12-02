@@ -72,6 +72,7 @@ export default function MyAnchors() {
   const [amountA, setAmountA] = useState<string>("");
   const [amountB, setAmountB] = useState<string>("");
   const [feeBps, setFeeBps] = useState(30); // 0.3% default
+  const [feeInput, setFeeInput] = useState("0.30"); // String for free typing
   const [creatingPool, setCreatingPool] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"tokenA" | "tokenB" | null>(null);
 
@@ -255,6 +256,7 @@ export default function MyAnchors() {
       setAmountA("");
       setAmountB("");
       setFeeBps(30);
+      setFeeInput("0.30");
       setCreateMode(false);
 
       // Reload pools
@@ -505,20 +507,24 @@ export default function MyAnchors() {
                 <div className="mb-2 text-xs text-muted-foreground">Trading Fee</div>
                 <div className="flex items-center gap-3">
                   <input
-                    type="number"
-                    min="1"
-                    max="1000"
-                    step="1"
-                    value={feeBps}
-                    onChange={(e) => setFeeBps(Math.max(1, Math.min(1000, parseInt(e.target.value) || 30)))}
-                    className="flex-1 rounded-lg bg-card px-3 py-2 text-sm font-semibold outline-none"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.30"
+                    value={feeInput}
+                    onChange={(e) => setFeeInput(e.target.value.replace(",", "."))}
+                    onBlur={() => {
+                      const val = parseFloat(feeInput) || 0.3;
+                      // Clamp between 0.01% and 10%
+                      const clamped = Math.max(0.01, Math.min(10, val));
+                      setFeeBps(Math.round(clamped * 100));
+                      setFeeInput(clamped.toFixed(2));
+                    }}
+                    className="w-20 rounded-lg bg-card px-3 py-2 text-sm font-semibold outline-none text-right"
                   />
-                  <span className="text-sm text-muted-foreground">
-                    bps ({(feeBps / 100).toFixed(2)}%)
-                  </span>
+                  <span className="text-sm text-muted-foreground">%</span>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  1-1000 basis points (0.01% - 10%). Lower fees attract more volume!
+                  0.01% - 10% max. Lower fees attract more volume!
                 </div>
               </div>
 
