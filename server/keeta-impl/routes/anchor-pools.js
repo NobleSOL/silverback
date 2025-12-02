@@ -14,29 +14,73 @@ const router = express.Router();
 
 /**
  * GET /api/anchor-pools
- * Get all active anchor pools
+ * Get all active anchor pools with reserves and metadata (public, no wallet required)
  */
 router.get('/', async (req, res) => {
   try {
     const repository = getAnchorRepository();
     const pools = await repository.loadAnchorPools();
 
-    // Enhance with runtime data (reserves, APY, etc.)
+    // Enhance with blockchain data (reserves, metadata, volume)
+    const { fetchTokenMetadata, getTokenBalance, getOpsClient } = await import('../utils/client.js');
+    const opsClient = await getOpsClient();
+
     const enhancedPools = await Promise.all(
       pools.map(async (pool) => {
         try {
-          // Fetch 24h volume
-          const volumeData = await repository.getAnchor24hVolume(pool.pool_address);
+          // Fetch metadata and reserves for both tokens
+          const [metadataA, metadataB, volumeData, reserveA, reserveB] = await Promise.all([
+            fetchTokenMetadata(pool.token_a),
+            fetchTokenMetadata(pool.token_b),
+            repository.getAnchor24hVolume(pool.pool_address).catch(() => null),
+            getTokenBalance(pool.pool_address, pool.token_a),
+            getTokenBalance(pool.pool_address, pool.token_b),
+          ]);
+
+          // Get LP token total supply
+          let totalShares = 0n;
+          if (pool.lp_token_address) {
+            try {
+              const lpTokenInfo = await opsClient.client.getAccountsInfo([pool.lp_token_address]);
+              const lpData = lpTokenInfo[pool.lp_token_address];
+              totalShares = lpData?.info?.supply ? BigInt(lpData.info.supply) : 0n;
+            } catch (lpError) {
+              console.warn(`Failed to fetch LP data for pool ${pool.pool_address}:`, lpError.message);
+            }
+          }
+
+          // Format reserve amounts
+          const reserveAHuman = Number(reserveA) / Math.pow(10, metadataA.decimals);
+          const reserveBHuman = Number(reserveB) / Math.pow(10, metadataB.decimals);
 
           return {
             ...pool,
+            symbolA: metadataA.symbol,
+            symbolB: metadataB.symbol,
+            decimalsA: metadataA.decimals,
+            decimalsB: metadataB.decimals,
+            iconA: metadataA.icon,
+            iconB: metadataB.icon,
+            reserveA: reserveA.toString(),
+            reserveB: reserveB.toString(),
+            reserveAHuman,
+            reserveBHuman,
+            totalShares: totalShares.toString(),
             volume24h: volumeData?.total_volume_in || '0',
             swapCount24h: volumeData?.swap_count || 0,
             feesCollected24h: volumeData?.total_fees || '0',
           };
         } catch (error) {
-          console.warn(`Failed to fetch volume for pool ${pool.pool_address}:`, error.message);
-          return pool;
+          console.warn(`Failed to fetch data for pool ${pool.pool_address}:`, error.message);
+          return {
+            ...pool,
+            symbolA: pool.token_a.slice(0, 8),
+            symbolB: pool.token_b.slice(0, 8),
+            reserveA: '0',
+            reserveB: '0',
+            reserveAHuman: 0,
+            reserveBHuman: 0,
+          };
         }
       })
     );
