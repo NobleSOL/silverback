@@ -4,10 +4,18 @@
  */
 
 import { FX } from '@keetanetwork/anchor';
+import Resolver from '@keetanetwork/anchor/lib/resolver.js';
+import * as KeetaNet from '@keetanetwork/keetanet-client';
 import type { UserClient } from '@keetanetwork/keetanet-client';
 
 // API base URL - use environment variable or default to current origin
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
+
+// Silverback FX Resolver - our default resolver for anchor swaps
+const SILVERBACK_RESOLVER = 'keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm';
+
+// Network configuration
+const NETWORK = import.meta.env.VITE_KEETA_NETWORK || 'main';
 
 export type AnchorQuote = {
   from: string; // Token address
@@ -37,18 +45,35 @@ export type AnchorEstimate = {
 };
 
 /**
- * Initialize FX Anchor client
+ * Initialize FX Anchor client with Silverback resolver
+ * This allows anchor swaps to work without users configuring a resolver
  */
 export function createFXClient(userClient: any, config?: any): any {
-  // FX Anchor SDK requires network to be specified
-  const network = import.meta.env.VITE_KEETA_NETWORK || 'test';
+  try {
+    // Create resolver pointing to Silverback's FX resolver account
+    const resolverConfig = {
+      client: userClient,
+      root: KeetaNet.lib.Account.fromPublicKeyString(SILVERBACK_RESOLVER),
+      trustedCAs: [],
+      network: NETWORK as 'test' | 'main',
+    };
 
-  const fxConfig = {
-    ...config,
-    network: network as 'test' | 'main' | 'staging' | 'dev',
-  };
+    const resolver = new Resolver(resolverConfig);
 
-  return new FX.Client(userClient, fxConfig);
+    // Create FX Client with UserClient + Silverback resolver
+    return new FX.Client(userClient, {
+      ...config,
+      resolver,
+      network: NETWORK as 'test' | 'main' | 'staging' | 'dev',
+    });
+  } catch (error) {
+    console.warn('Failed to create FX client with resolver, falling back to default:', error);
+    // Fallback without resolver
+    return new FX.Client(userClient, {
+      ...config,
+      network: NETWORK as 'test' | 'main' | 'staging' | 'dev',
+    });
+  }
 }
 
 /**
