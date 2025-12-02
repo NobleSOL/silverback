@@ -111,14 +111,23 @@ export default function MyAnchors() {
                 userData.pools.map((p: any) => [p.pool_address, p])
               );
 
-              // Merge user position data into all pools
+              // Merge user data into all pools (prefer user endpoint data for symbols/reserves)
               pools = pools.map((pool: any) => {
                 const userPool = userPoolMap.get(pool.pool_address);
                 if (userPool) {
                   return {
                     ...pool,
-                    userPosition: userPool.userPosition,
+                    // Use user endpoint data for symbols and reserves (more reliable)
+                    symbolA: userPool.symbolA || pool.symbolA,
+                    symbolB: userPool.symbolB || pool.symbolB,
+                    decimalsA: userPool.decimalsA || pool.decimalsA,
+                    decimalsB: userPool.decimalsB || pool.decimalsB,
+                    reserveA: userPool.reserveA || pool.reserveA,
+                    reserveB: userPool.reserveB || pool.reserveB,
+                    reserveAHuman: userPool.reserveAHuman || pool.reserveAHuman,
+                    reserveBHuman: userPool.reserveBHuman || pool.reserveBHuman,
                     totalShares: userPool.totalShares || pool.totalShares,
+                    userPosition: userPool.userPosition,
                   };
                 }
                 return pool;
