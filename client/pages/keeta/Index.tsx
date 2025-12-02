@@ -15,7 +15,6 @@ import TokenLogo from "@/components/shared/TokenLogo";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 import { getSwapQuote as getPoolQuote } from "@/lib/keeta-client";
-import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keeta-anchor";
 
 // KTA logo URL
 const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
@@ -27,22 +26,8 @@ const getTokenLogo = (symbol: string, defaultUrl?: string) => {
 // API base URL
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
 
-// Route types
-type RouteType = "pool" | "anchor";
-
-interface SwapRoute {
-  type: RouteType;
-  amountOut: string;
-  amountOutHuman: number;
-  priceImpact: number;
-  fee: string;
-  source: string; // e.g., "KTA/WAVE Pool" or "Silverback Anchor"
-  // Pool-specific
-  poolAddress?: string;
-  pool?: any;
-  // Anchor-specific
-  anchorQuote?: AnchorQuote;
-}
+// Swap modes
+type SwapMode = "pool" | "anchor";
 
 export default function KeetaIndex() {
   const {
@@ -58,179 +43,198 @@ export default function KeetaIndex() {
     sendDialogOpen,
     setSendDialogOpen,
     sendToken,
-    setSendToken,
-    sendRecipient,
     setSendRecipient,
+    sendRecipient,
     sendAmount,
     setSendAmount,
     sending,
     executeSend,
   } = useKeetaWallet();
 
-  // Swap state - token-based (not pool-based)
-  const [tokenFrom, setTokenFrom] = useState<string>("");
-  const [tokenTo, setTokenTo] = useState<string>("");
-  const [amount, setAmount] = useState("");
-  const [routes, setRoutes] = useState<SwapRoute[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<SwapRoute | null>(null);
-  const [loadingQuotes, setLoadingQuotes] = useState(false);
+  // Swap mode toggle
+  const [swapMode, setSwapMode] = useState<SwapMode>("pool");
+
+  // Pool swap state
+  const [selectedPool, setSelectedPool] = useState<string>("");
+  const [swapTokenIn, setSwapTokenIn] = useState<string>("");
+  const [swapAmount, setSwapAmount] = useState("");
+  const [swapQuote, setSwapQuote] = useState<any>(null);
   const [swapping, setSwapping] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"from" | "to" | null>(null);
 
-  // Get token info
-  const fromTokenInfo = sortedTokens.find((t) => t.address === tokenFrom);
-  const toTokenInfo = sortedTokens.find((t) => t.address === tokenTo);
-
-  // Find pools that connect tokenFrom to tokenTo
+  // Get available pools for current token selection
   const availablePools = useMemo(() => {
-    if (!tokenFrom || !tokenTo) return [];
+    if (!swapTokenIn) return [];
     return (allPools || pools).filter(
-      (p) =>
-        (p.tokenA === tokenFrom && p.tokenB === tokenTo) ||
-        (p.tokenB === tokenFrom && p.tokenA === tokenTo)
+      p => p.tokenA === swapTokenIn || p.tokenB === swapTokenIn
     );
-  }, [tokenFrom, tokenTo, pools, allPools]);
+  }, [swapTokenIn, pools, allPools]);
+
+  // Get token info
+  const fromTokenInfo = sortedTokens.find((t) => t.address === swapTokenIn);
+  const selectedPoolData = (allPools || pools).find(p => p.poolAddress === selectedPool);
+  const tokenOutAddress = selectedPoolData
+    ? (selectedPoolData.tokenA === swapTokenIn ? selectedPoolData.tokenB : selectedPoolData.tokenA)
+    : "";
+  const toTokenInfo = sortedTokens.find((t) => t.address === tokenOutAddress);
 
   // Toggle tokens
   function toggleTokens() {
-    const temp = tokenFrom;
-    setTokenFrom(tokenTo);
-    setTokenTo(temp);
-    setRoutes([]);
-    setSelectedRoute(null);
+    if (selectedPoolData) {
+      const newTokenIn = tokenOutAddress;
+      setSwapTokenIn(newTokenIn);
+      // Pool stays the same, just swap direction
+    }
+    setSwapQuote(null);
   }
 
-  // Fetch quotes from both pools and anchors
-  async function fetchAllQuotes() {
-    if (!tokenFrom || !tokenTo || !amount || Number(amount) <= 0) {
-      setRoutes([]);
-      setSelectedRoute(null);
+  // Get pool swap quote
+  function getQuote() {
+    if (!selectedPool || !swapTokenIn || !swapAmount || !selectedPoolData) {
+      setSwapQuote(null);
       return;
     }
 
-    setLoadingQuotes(true);
-    const allRoutes: SwapRoute[] = [];
-
     try {
-      const decimalsFrom = fromTokenInfo?.decimals || 9;
-      const decimalsTo = toTokenInfo?.decimals || 9;
-
-      // 1. Get pool quotes
-      for (const pool of availablePools) {
-        try {
-          const quote = getPoolQuote(
-            tokenFrom,
-            tokenTo,
-            amount,
-            pool.poolAddress,
-            {
-              tokenA: pool.tokenA,
-              tokenB: pool.tokenB,
-              reserveA: pool.reserveA,
-              reserveB: pool.reserveB,
-              decimalsA: pool.decimalsA || 9,
-              decimalsB: pool.decimalsB || 9,
-            }
-          );
-
-          if (quote && quote.amountOutHuman > 0) {
-            const tokenOutSymbol = pool.tokenA === tokenFrom ? pool.symbolB : pool.symbolA;
-            const tokenInSymbol = pool.tokenA === tokenFrom ? pool.symbolA : pool.symbolB;
-
-            allRoutes.push({
-              type: "pool",
-              amountOut: quote.amountOut.toString(),
-              amountOutHuman: quote.amountOutHuman,
-              priceImpact: quote.priceImpact,
-              fee: `${quote.feeAmountHuman.toFixed(6)} ${tokenInSymbol}`,
-              source: `${pool.symbolA}/${pool.symbolB} Pool`,
-              poolAddress: pool.poolAddress,
-              pool,
-            });
-          }
-        } catch (err) {
-          console.warn(`Failed to get quote from pool ${pool.poolAddress}:`, err);
+      const quote = getPoolQuote(
+        swapTokenIn,
+        tokenOutAddress,
+        swapAmount,
+        selectedPool,
+        {
+          tokenA: selectedPoolData.tokenA,
+          tokenB: selectedPoolData.tokenB,
+          reserveA: selectedPoolData.reserveA,
+          reserveB: selectedPoolData.reserveB,
+          decimalsA: selectedPoolData.decimalsA || 9,
+          decimalsB: selectedPoolData.decimalsB || 9,
         }
-      }
+      );
 
-      // 2. Get anchor quotes (only if wallet connected for signing)
-      if (wallet?.isKeythings) {
-        try {
-          const { getKeythingsProvider } = await import("@/lib/keythings-provider");
-          const provider = getKeythingsProvider();
+      if (quote) {
+        const tokenOutSymbol = selectedPoolData.tokenA === swapTokenIn
+          ? selectedPoolData.symbolB
+          : selectedPoolData.symbolA;
+        const tokenInSymbol = selectedPoolData.tokenA === swapTokenIn
+          ? selectedPoolData.symbolA
+          : selectedPoolData.symbolB;
 
-          if (provider) {
-            const userClient = await provider.getUserClient();
-            const amountAtomic = BigInt(Math.floor(Number(amount) * Math.pow(10, decimalsFrom)));
-
-            const anchorQuotes = await getAnchorQuotes(
-              userClient,
-              tokenFrom,
-              tokenTo,
-              amountAtomic,
-              decimalsFrom,
-              decimalsTo
-            );
-
-            for (const aq of anchorQuotes) {
-              allRoutes.push({
-                type: "anchor",
-                amountOut: aq.amountOut.toString(),
-                amountOutHuman: aq.amountOutHuman,
-                priceImpact: 0, // Anchors don't have price impact
-                fee: aq.cost ? `${(Number(aq.cost) / 1e9).toFixed(6)}` : "0",
-                source: aq.providerID === "silverback" ? "Silverback Anchor" : `${aq.providerID} Anchor`,
-                anchorQuote: aq,
-              });
-            }
-          }
-        } catch (err) {
-          console.warn("Failed to get anchor quotes:", err);
-        }
-      }
-
-      // Sort by best output (highest amountOutHuman first)
-      allRoutes.sort((a, b) => b.amountOutHuman - a.amountOutHuman);
-
-      setRoutes(allRoutes);
-
-      // Auto-select best route
-      if (allRoutes.length > 0) {
-        setSelectedRoute(allRoutes[0]);
+        setSwapQuote({
+          amountOut: quote.amountOutHuman?.toFixed(6) || "0",
+          priceImpact: quote.priceImpact?.toFixed(2) || "0",
+          fee: `${quote.feeAmountHuman?.toFixed(6) || "0"} ${tokenInSymbol}`,
+          tokenOutSymbol,
+          tokenInSymbol,
+          amountOutRaw: quote.amountOut,
+        });
       } else {
-        setSelectedRoute(null);
+        setSwapQuote(null);
       }
     } catch (error) {
-      console.error("Failed to fetch quotes:", error);
-      setRoutes([]);
-      setSelectedRoute(null);
-    } finally {
-      setLoadingQuotes(false);
+      console.error("Failed to get swap quote:", error);
+      setSwapQuote(null);
     }
   }
 
   // Debounced quote fetching
   useEffect(() => {
-    if (amount && tokenFrom && tokenTo) {
-      const timer = setTimeout(() => fetchAllQuotes(), 300);
+    if (swapAmount && selectedPool && swapTokenIn) {
+      const timer = setTimeout(() => getQuote(), 200);
       return () => clearTimeout(timer);
     } else {
-      setRoutes([]);
-      setSelectedRoute(null);
+      setSwapQuote(null);
     }
-  }, [amount, tokenFrom, tokenTo, availablePools.length, wallet?.address]);
+  }, [swapAmount, selectedPool, swapTokenIn]);
 
-  // Execute swap based on selected route
+  // Execute pool swap
   async function executeSwap() {
-    if (!wallet || !selectedRoute) return;
+    if (!wallet || !selectedPool || !swapTokenIn || !swapAmount || !swapQuote || !selectedPoolData) return;
 
     setSwapping(true);
     try {
-      if (selectedRoute.type === "pool") {
-        await executePoolSwap();
+      const tokenInSymbol = swapQuote.tokenInSymbol;
+      const tokenOutSymbol = swapQuote.tokenOutSymbol;
+
+      if (wallet.isKeythings) {
+        // Keythings wallet: Two-transaction flow
+        const { calculateSwapOutput, calculateFeeSplit, toAtomic } = await import('@/lib/keeta-swap-math');
+        const { getKeythingsProvider } = await import('@/lib/keythings-provider');
+
+        const reserveIn = selectedPoolData.tokenA === swapTokenIn
+          ? BigInt(selectedPoolData.reserveA)
+          : BigInt(selectedPoolData.reserveB);
+        const reserveOut = selectedPoolData.tokenA === swapTokenIn
+          ? BigInt(selectedPoolData.reserveB)
+          : BigInt(selectedPoolData.reserveA);
+
+        const amountInAtomic = toAtomic(swapAmount, 9);
+        const { amountOut } = calculateSwapOutput(amountInAtomic, reserveIn, reserveOut);
+        const { protocolFee, amountToPool } = calculateFeeSplit(amountInAtomic);
+
+        const provider = getKeythingsProvider();
+        if (!provider) throw new Error('Keythings provider not found');
+
+        const userClient = await provider.getUserClient();
+        const TREASURY_ADDRESS = 'keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy';
+
+        // TX1: User sends tokens to pool + treasury
+        const tx1Builder = userClient.initBuilder();
+        tx1Builder.send(selectedPoolData.poolAddress, amountToPool, swapTokenIn);
+        if (protocolFee > 0n) {
+          tx1Builder.send(TREASURY_ADDRESS, protocolFee, swapTokenIn);
+        }
+        await userClient.publishBuilder(tx1Builder);
+
+        // TX2: Backend sends output to user
+        const tx2Response = await fetch(`${API_BASE}/swap/keythings/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userAddress: wallet.address,
+            poolAddress: selectedPoolData.poolAddress,
+            tokenOut: tokenOutAddress,
+            amountOut: amountOut.toString(),
+          }),
+        });
+
+        const tx2Result = await tx2Response.json();
+        if (!tx2Result.success) throw new Error(tx2Result.error || 'TX2 failed');
+
+        toast({
+          title: "Swap Successful!",
+          description: `Swapped ${swapAmount} ${tokenInSymbol} for ${swapQuote.amountOut} ${tokenOutSymbol}`,
+        });
       } else {
-        await executeAnchorSwapHandler();
+        // Seed wallet flow
+        const swapResponse = await fetch(`${API_BASE}/swap/execute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userAddress: wallet.address,
+            userSeed: wallet.seed,
+            tokenIn: swapTokenIn,
+            tokenOut: tokenOutAddress,
+            amountIn: swapAmount,
+            minAmountOut: "0",
+            slippagePercent: 0.5,
+          }),
+        });
+
+        const result = await swapResponse.json();
+        if (!result.success) throw new Error(result.error || "Swap failed");
+
+        toast({
+          title: "Swap Successful!",
+          description: `Swapped ${swapAmount} ${tokenInSymbol} for ${swapQuote.amountOut} ${tokenOutSymbol}`,
+        });
       }
+
+      // Clear and refresh
+      setSwapAmount("");
+      setSwapQuote(null);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await refreshBalances();
+      await loadPools();
     } catch (error: any) {
       toast({
         title: "Swap Failed",
@@ -242,114 +246,6 @@ export default function KeetaIndex() {
     }
   }
 
-  // Execute pool swap
-  async function executePoolSwap() {
-    if (!selectedRoute?.pool || !wallet) return;
-
-    const pool = selectedRoute.pool;
-    const tokenInSymbol = pool.tokenA === tokenFrom ? pool.symbolA : pool.symbolB;
-    const tokenOutSymbol = pool.tokenA === tokenFrom ? pool.symbolB : pool.symbolA;
-
-    if (wallet.isKeythings) {
-      // Keythings wallet: Two-transaction flow
-      const { calculateSwapOutput, calculateFeeSplit, toAtomic } = await import('@/lib/keeta-swap-math');
-      const { getKeythingsProvider } = await import('@/lib/keythings-provider');
-
-      const reserveIn = pool.tokenA === tokenFrom ? BigInt(pool.reserveA) : BigInt(pool.reserveB);
-      const reserveOut = pool.tokenA === tokenFrom ? BigInt(pool.reserveB) : BigInt(pool.reserveA);
-      const amountInAtomic = toAtomic(amount, 9);
-      const { amountOut } = calculateSwapOutput(amountInAtomic, reserveIn, reserveOut);
-      const { protocolFee, amountToPool } = calculateFeeSplit(amountInAtomic);
-
-      const provider = getKeythingsProvider();
-      if (!provider) throw new Error('Keythings provider not found');
-
-      const userClient = await provider.getUserClient();
-      const TREASURY_ADDRESS = 'keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy';
-
-      // TX1: User sends tokens to pool + treasury
-      const tx1Builder = userClient.initBuilder();
-      tx1Builder.send(pool.poolAddress, amountToPool, tokenFrom);
-      if (protocolFee > 0n) {
-        tx1Builder.send(TREASURY_ADDRESS, protocolFee, tokenFrom);
-      }
-      await userClient.publishBuilder(tx1Builder);
-
-      // TX2: Backend sends output to user
-      const tx2Response = await fetch(`${API_BASE}/swap/keythings/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userAddress: wallet.address,
-          poolAddress: pool.poolAddress,
-          tokenOut: tokenTo,
-          amountOut: amountOut.toString(),
-        }),
-      });
-
-      const tx2Result = await tx2Response.json();
-      if (!tx2Result.success) throw new Error(tx2Result.error || 'TX2 failed');
-
-      toast({
-        title: "Swap Successful!",
-        description: `Swapped ${amount} ${tokenInSymbol} for ${selectedRoute.amountOutHuman.toFixed(6)} ${tokenOutSymbol} via Pool`,
-      });
-    } else {
-      // Seed wallet flow
-      const swapResponse = await fetch(`${API_BASE}/swap/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userAddress: wallet.address,
-          userSeed: wallet.seed,
-          tokenIn: tokenFrom,
-          tokenOut: tokenTo,
-          amountIn: amount,
-          minAmountOut: "0",
-          slippagePercent: 0.5,
-        }),
-      });
-
-      const result = await swapResponse.json();
-      if (!result.success) throw new Error(result.error || "Swap failed");
-
-      toast({
-        title: "Swap Successful!",
-        description: `Swapped ${amount} ${tokenInSymbol} for ${selectedRoute.amountOutHuman.toFixed(6)} ${tokenOutSymbol} via Pool`,
-      });
-    }
-
-    // Clear and refresh
-    setAmount("");
-    setRoutes([]);
-    setSelectedRoute(null);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    await refreshBalances();
-    await loadPools();
-  }
-
-  // Execute anchor swap
-  async function executeAnchorSwapHandler() {
-    if (!selectedRoute?.anchorQuote || !wallet) return;
-
-    const { getKeythingsProvider } = await import("@/lib/keythings-provider");
-    const provider = getKeythingsProvider();
-    if (!provider) throw new Error("Keythings provider not found");
-
-    const userClient = await provider.getUserClient();
-    await executeAnchorSwap(selectedRoute.anchorQuote, userClient, wallet.address);
-
-    toast({
-      title: "Swap Successful!",
-      description: `Swapped via ${selectedRoute.source}`,
-    });
-
-    setAmount("");
-    setRoutes([]);
-    setSelectedRoute(null);
-    await refreshBalances();
-  }
-
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       <div className="container py-10">
@@ -359,196 +255,185 @@ export default function KeetaIndex() {
             <div className="glass-card-elevated rounded-2xl p-6">
               <div className="mb-4 flex items-center justify-between">
                 <h1 className="text-xl font-semibold">Swap</h1>
-                {routes.length > 1 && (
-                  <span className="text-xs text-muted-foreground">
-                    {routes.length} routes found
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                {/* QuickFill */}
-                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Select a share of your balance</span>
-                  <QuickFill
-                    balance={fromTokenInfo ? parseFloat(fromTokenInfo.balanceFormatted) : undefined}
-                    onSelect={setAmount}
-                    percents={[25, 50, 75, 100]}
-                  />
-                </div>
-
-                {/* From Token */}
-                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
-                  <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>You pay</span>
-                    {fromTokenInfo && <span>Bal: {fromTokenInfo.balanceFormatted}</span>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectingToken("from")}
-                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
-                    >
-                      {fromTokenInfo && <TokenLogo src={getTokenLogo(fromTokenInfo.symbol, fromTokenInfo.logoUrl)} alt={fromTokenInfo.symbol} size={20} />}
-                      <span className="text-sm font-semibold">
-                        {fromTokenInfo ? fromTokenInfo.symbol : "Select"}
-                      </span>
-                    </button>
-                    <input
-                      inputMode="decimal"
-                      pattern="^[0-9]*[.,]?[0-9]*$"
-                      placeholder="0.00"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value.replace(",", "."))}
-                      className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none placeholder:text-muted-foreground/60"
-                    />
-                  </div>
-                  {tokenFrom && amount && tokenPrices?.[tokenFrom]?.priceUsd && (
-                    <div className="text-xs text-muted-foreground text-right mt-1">
-                      ${(parseFloat(amount) * tokenPrices[tokenFrom].priceUsd!).toFixed(2)} USD
-                    </div>
-                  )}
-                </div>
-
-                {/* Swap Arrow */}
-                <div className="relative flex justify-center -my-2">
+                {/* Mode Toggle */}
+                <div className="flex rounded-lg bg-secondary/60 p-0.5">
                   <button
-                    type="button"
-                    onClick={toggleTokens}
-                    className="rounded-xl border border-border/60 bg-card p-2 shadow-md hover:bg-card/80 transition-colors cursor-pointer z-10"
+                    onClick={() => setSwapMode("pool")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      swapMode === "pool"
+                        ? "bg-brand text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
                   >
-                    <ArrowDownUp className="h-4 w-4" />
+                    Pool
+                  </button>
+                  <button
+                    onClick={() => setSwapMode("anchor")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                      swapMode === "anchor"
+                        ? "bg-brand text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Anchor
                   </button>
                 </div>
+              </div>
 
-                {/* To Token */}
-                <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
-                  <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>You receive</span>
-                    {toTokenInfo && <span>Bal: {toTokenInfo.balanceFormatted}</span>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setSelectingToken("to")}
-                      className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
-                    >
-                      {toTokenInfo && <TokenLogo src={getTokenLogo(toTokenInfo.symbol, toTokenInfo.logoUrl)} alt={toTokenInfo.symbol} size={20} />}
-                      <span className="text-sm font-semibold">
-                        {toTokenInfo ? toTokenInfo.symbol : "Select"}
-                      </span>
-                    </button>
-                    <input
-                      readOnly
-                      value={selectedRoute ? selectedRoute.amountOutHuman.toFixed(6) : "0.00"}
-                      className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none text-muted-foreground/80"
+              {swapMode === "pool" ? (
+                /* Pool Swap Mode */
+                <div className="space-y-3">
+                  {/* QuickFill */}
+                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Select a share of your balance</span>
+                    <QuickFill
+                      balance={fromTokenInfo ? parseFloat(fromTokenInfo.balanceFormatted) : undefined}
+                      onSelect={setSwapAmount}
+                      percents={[25, 50, 75, 100]}
                     />
                   </div>
-                  {tokenTo && selectedRoute && tokenPrices?.[tokenTo]?.priceUsd && (
-                    <div className="text-xs text-muted-foreground text-right mt-1">
-                      ${(selectedRoute.amountOutHuman * tokenPrices[tokenTo].priceUsd!).toFixed(2)} USD
-                    </div>
-                  )}
-                </div>
 
-                {/* Loading indicator */}
-                {loadingQuotes && (
-                  <div className="flex items-center justify-center py-2">
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    <span className="text-sm text-muted-foreground">Finding best route...</span>
+                  {/* From Token */}
+                  <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>You pay</span>
+                      {fromTokenInfo && <span>Bal: {fromTokenInfo.balanceFormatted}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectingToken("from")}
+                        className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        {fromTokenInfo && <TokenLogo src={getTokenLogo(fromTokenInfo.symbol, fromTokenInfo.logoUrl)} alt={fromTokenInfo.symbol} size={20} />}
+                        <span className="text-sm font-semibold">
+                          {fromTokenInfo ? fromTokenInfo.symbol : "Select"}
+                        </span>
+                      </button>
+                      <input
+                        inputMode="decimal"
+                        pattern="^[0-9]*[.,]?[0-9]*$"
+                        placeholder="0.00"
+                        value={swapAmount}
+                        onChange={(e) => setSwapAmount(e.target.value.replace(",", "."))}
+                        className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none placeholder:text-muted-foreground/60"
+                      />
+                    </div>
                   </div>
-                )}
 
-                {/* Route Details */}
-                {selectedRoute && !loadingQuotes && (
-                  <div className="rounded-lg bg-secondary/40 p-3 space-y-2 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Route</span>
-                      <span className="font-medium flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${selectedRoute.type === "pool" ? "bg-purple-400" : "bg-sky-400"}`} />
-                        {selectedRoute.source}
-                      </span>
+                  {/* Swap Arrow */}
+                  <div className="relative flex justify-center -my-2">
+                    <button
+                      type="button"
+                      onClick={toggleTokens}
+                      className="rounded-xl border border-border/60 bg-card p-2 shadow-md hover:bg-card/80 transition-colors cursor-pointer z-10"
+                    >
+                      <ArrowDownUp className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* To Token (Pool Selection) */}
+                  <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>You receive</span>
+                      {toTokenInfo && <span>Bal: {toTokenInfo.balanceFormatted}</span>}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Expected Output</span>
-                      <span className="font-medium">{selectedRoute.amountOutHuman.toFixed(6)} {toTokenInfo?.symbol}</span>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectingToken("to")}
+                        disabled={!swapTokenIn}
+                        className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        {toTokenInfo && <TokenLogo src={getTokenLogo(toTokenInfo.symbol, toTokenInfo.logoUrl)} alt={toTokenInfo.symbol} size={20} />}
+                        <span className="text-sm font-semibold">
+                          {toTokenInfo ? toTokenInfo.symbol : "Select"}
+                        </span>
+                      </button>
+                      <input
+                        readOnly
+                        value={swapQuote?.amountOut || "0.00"}
+                        className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none text-muted-foreground/80"
+                      />
                     </div>
-                    {selectedRoute.type === "pool" && selectedRoute.priceImpact > 0 && (
+                  </div>
+
+                  {/* Quote Details */}
+                  {swapQuote && (
+                    <div className="rounded-lg bg-secondary/40 p-3 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Expected Output</span>
+                        <span className="font-medium">{swapQuote.amountOut} {swapQuote.tokenOutSymbol}</span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Price Impact</span>
-                        <span className={selectedRoute.priceImpact > 5 ? "text-red-400 font-medium" : "font-medium"}>
-                          {selectedRoute.priceImpact.toFixed(2)}%
+                        <span className={Number(swapQuote.priceImpact) > 5 ? "text-red-400 font-medium" : "font-medium"}>
+                          {swapQuote.priceImpact}%
                         </span>
                       </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Fee</span>
-                      <span className="font-medium">{selectedRoute.fee}</span>
-                    </div>
-
-                    {/* Route selection if multiple routes */}
-                    {routes.length > 1 && (
-                      <div className="pt-2 border-t border-border/40 mt-2">
-                        <div className="text-xs text-muted-foreground mb-2">Available routes:</div>
-                        <div className="space-y-1">
-                          {routes.map((route, i) => (
-                            <button
-                              key={i}
-                              onClick={() => setSelectedRoute(route)}
-                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex justify-between items-center transition-colors ${
-                                selectedRoute === route
-                                  ? "bg-brand/20 border border-brand/40"
-                                  : "bg-secondary/60 hover:bg-secondary/80"
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${route.type === "pool" ? "bg-purple-400" : "bg-sky-400"}`} />
-                                {route.source}
-                              </span>
-                              <span className="font-mono">{route.amountOutHuman.toFixed(4)}</span>
-                            </button>
-                          ))}
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Fee</span>
+                        <span className="font-medium">{swapQuote.fee}</span>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {/* No routes message */}
-                {!loadingQuotes && tokenFrom && tokenTo && amount && Number(amount) > 0 && routes.length === 0 && (
-                  <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-sm text-yellow-400 flex items-center gap-2">
-                    <Info className="h-4 w-4 shrink-0" />
-                    <span>No routes available for this pair. Try a different token.</span>
-                  </div>
-                )}
+                  {/* No pools message */}
+                  {swapTokenIn && availablePools.length === 0 && (
+                    <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-sm text-yellow-400 flex items-center gap-2">
+                      <Info className="h-4 w-4 shrink-0" />
+                      <span>No pools available for this token.</span>
+                    </div>
+                  )}
 
-                <Button
-                  onClick={!wallet ? connectKeythingsWallet : executeSwap}
-                  disabled={wallet ? (swapping || !amount || !tokenFrom || !tokenTo || !selectedRoute || loadingQuotes) : loading}
-                  className="w-full h-12 text-base font-semibold"
-                >
-                  {!wallet ? (
-                    loading ? (
+                  <Button
+                    onClick={!wallet ? connectKeythingsWallet : executeSwap}
+                    disabled={wallet ? (swapping || !swapAmount || !swapTokenIn || !selectedPool || !swapQuote) : loading}
+                    className="w-full h-12 text-base font-semibold"
+                  >
+                    {!wallet ? (
+                      loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Wallet className="mr-2 h-4 w-4" />
+                          Connect Wallet
+                        </>
+                      )
+                    ) : swapping ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Connecting...
+                        Swapping...
                       </>
                     ) : (
-                      <>
-                        <Wallet className="mr-2 h-4 w-4" />
-                        Connect Wallet
-                      </>
-                    )
-                  ) : swapping ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Swapping...
-                    </>
-                  ) : (
-                    "Swap"
-                  )}
-                </Button>
-              </div>
+                      "Swap"
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                /* Anchor Swap Mode - Coming Soon */
+                <div className="space-y-4 py-8 text-center">
+                  <div className="rounded-full bg-sky-500/10 w-16 h-16 mx-auto flex items-center justify-center">
+                    <Info className="h-8 w-8 text-sky-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">FX Anchor Swaps</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                      Anchor swaps use the FX protocol for atomic cross-chain style swaps.
+                      This feature requires your Keythings wallet to have the Silverback resolver configured.
+                    </p>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Resolver: <code className="bg-secondary/60 px-1.5 py-0.5 rounded">keeta_asnqu5q...kwtlqhle5cgcjm</code>
+                  </div>
+                  <p className="text-xs text-amber-400">
+                    Pool swaps are recommended for most trades.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -610,16 +495,37 @@ export default function KeetaIndex() {
         onClose={() => setSelectingToken(null)}
         onSelect={(token: KeetaToken) => {
           if (selectingToken === "from") {
-            setTokenFrom(token.address);
-            if (token.address === tokenTo) setTokenTo("");
-          } else {
-            setTokenTo(token.address);
-            if (token.address === tokenFrom) setTokenFrom("");
+            setSwapTokenIn(token.address);
+            setSelectedPool("");
+            setSwapQuote(null);
+          } else if (selectingToken === "to" && swapTokenIn) {
+            // Find pool that connects swapTokenIn to selected token
+            const pool = (allPools || pools).find(
+              p =>
+                (p.tokenA === swapTokenIn && p.tokenB === token.address) ||
+                (p.tokenB === swapTokenIn && p.tokenA === token.address)
+            );
+            if (pool) {
+              setSelectedPool(pool.poolAddress);
+            }
           }
           setSelectingToken(null);
         }}
-        tokens={sortedTokens}
-        excludeAddress={selectingToken === "from" ? tokenTo : tokenFrom}
+        tokens={selectingToken === "from"
+          ? sortedTokens
+          : selectingToken === "to" && swapTokenIn
+            ? (() => {
+                // Show only tokens that have pools with swapTokenIn
+                const availableOutputTokens = new Set<string>();
+                (allPools || pools).forEach(pool => {
+                  if (pool.tokenA === swapTokenIn) availableOutputTokens.add(pool.tokenB);
+                  if (pool.tokenB === swapTokenIn) availableOutputTokens.add(pool.tokenA);
+                });
+                return sortedTokens.filter(t => availableOutputTokens.has(t.address));
+              })()
+            : []
+        }
+        excludeAddress={swapTokenIn}
       />
     </div>
   );
