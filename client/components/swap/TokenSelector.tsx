@@ -114,11 +114,35 @@ export default function TokenSelector({
           }) as Promise<number>,
         ]);
         if (!cancel) {
+          // Check if token exists in TOKEN_META (by symbol or address)
+          const upperSymbol = (symbol || "TOKEN").toUpperCase();
+          const meta = TOKEN_META[upperSymbol];
+
+          // Use logo from TOKEN_META if available (match by symbol or address)
+          let logo: string | undefined;
+          if (meta?.logo) {
+            // Check if address matches or if it's just by symbol
+            if (meta.address?.toLowerCase() === q.toLowerCase() || !meta.address) {
+              logo = meta.logo;
+            }
+          }
+
+          // Also check all TOKEN_META entries for address match
+          if (!logo) {
+            for (const [, tokenMeta] of Object.entries(TOKEN_META)) {
+              if (tokenMeta.address?.toLowerCase() === q.toLowerCase() && tokenMeta.logo) {
+                logo = tokenMeta.logo;
+                break;
+              }
+            }
+          }
+
           setCustomToken({
             symbol: symbol || "TOKEN",
             name: name || symbol || "Token",
             decimals,
             address: q,
+            logo,
           });
         }
       } catch (e) {
