@@ -99,7 +99,9 @@ export async function getAnchorQuotes(
 
     // 1. Fetch FX Anchor quotes
     try {
+      console.log('🔍 Creating FX Client with Silverback resolver...');
       const fxClient = createFXClient(userClient);
+      console.log('✅ FX Client created');
 
       // FX SDK expects token addresses as strings, not Account objects
       const conversionRequest = {
@@ -109,10 +111,13 @@ export async function getAnchorQuotes(
         affinity: 'from' as const, // Amount is in 'from' token
       };
 
+      console.log('🔍 Requesting FX quotes:', conversionRequest);
       const quotes = await fxClient.getQuotes(conversionRequest);
+      console.log('📋 FX quotes response:', quotes);
 
       if (quotes && quotes.length > 0) {
         console.log(`✅ Received ${quotes.length} FX Anchor quote(s)`);
+        console.log('📋 First quote wrapper:', quotes[0]);
 
         // Convert quotes to our format
         const fxQuotes: AnchorQuote[] = quotes.map((quoteWrapper) => {
@@ -275,6 +280,14 @@ export async function executeAnchorSwap(
   userAddress?: string
 ): Promise<{ success: boolean; exchangeID?: string }> {
   console.log(`🚀 Executing ${anchorQuote.providerID} swap...`);
+  console.log('📋 Quote details:', {
+    providerID: anchorQuote.providerID,
+    from: anchorQuote.from,
+    to: anchorQuote.to,
+    amountIn: anchorQuote.amountIn,
+    amountOut: anchorQuote.amountOut,
+    hasRawQuote: !!anchorQuote.rawQuote,
+  });
 
   if (!anchorQuote.rawQuote) {
     throw new Error('Invalid anchor quote - missing raw quote data');
@@ -288,6 +301,7 @@ export async function executeAnchorSwap(
     }
 
     const quote = anchorQuote.rawQuote;
+    console.log('📋 Silverback raw quote:', quote);
 
     if (!quote?.tokenIn) {
       throw new Error(`Invalid quote: missing tokenIn field`);
@@ -301,8 +315,10 @@ export async function executeAnchorSwap(
 
     console.log('📝 TX1: Sending tokens to pool...');
     console.log('   Pool address:', quote.poolAddress);
-    console.log('   Sending:', quote.amountIn, quote.tokenIn.slice(0, 12) + '...');
-    console.log('   Expecting:', quote.amountOut, quote.tokenOut.slice(0, 12) + '...');
+    console.log('   Token In:', quote.tokenIn);
+    console.log('   Amount In:', quote.amountIn);
+    console.log('   Token Out:', quote.tokenOut);
+    console.log('   Expected Out:', quote.amountOut);
 
     // TX1: User sends tokens to pool
     // Backend will complete the swap using acceptSwapRequest()
@@ -311,45 +327,66 @@ export async function executeAnchorSwap(
     await userClient.publishBuilder(tx1Builder);
     console.log('✅ TX1 completed - tokens sent to pool');
 
-    console.log('⏳ Waiting for finalization...');
+    console.log('⏳ Waiting for finalization (3s)...');
 
-    // Wait for finalization
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for finalization - increased to 3s
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     console.log('📝 TX2: Requesting backend to send tokens from pool...');
+    console.log('   API_BASE:', API_BASE);
 
     // TX2: Call backend to complete the swap
-    const response = await fetch(`${API_BASE}/anchor/swap`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        quote,
-        userAddress,
-      }),
-    });
+    try {
+      const response = await fetch(`${API_BASE}/anchor/swap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quote,
+          userAddress,
+        }),
+      });
 
-    const data = await response.json();
+      console.log('📡 TX2 Response status:', response.status);
 
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Silverback swap TX2 failed');
+      const data = await response.json();
+      console.log('📡 TX2 Response data:', data);
+
+      if (!response.ok || !data.success) {
+        console.error('❌ TX2 failed:', data);
+        throw new Error(data.error || 'Silverback swap TX2 failed - tokens may need recovery');
+      }
+
+      console.log('✅ Silverback swap completed');
+
+      return {
+        success: true,
+        exchangeID: data.poolAddress,
+      };
+    } catch (tx2Error: any) {
+      console.error('❌ TX2 network/fetch error:', tx2Error);
+      throw new Error(`TX2 failed after TX1 completed: ${tx2Error.message}. Contact support to recover tokens.`);
     }
-
-    console.log('✅ Silverback swap completed');
-
-    return {
-      success: true,
-      exchangeID: data.poolAddress, // Use pool address as identifier
-    };
   } else {
     // Execute via FX Anchor SDK
-    const exchange = await anchorQuote.rawQuote.createExchange();
+    console.log('📋 FX Anchor raw quote:', anchorQuote.rawQuote);
+    console.log('📋 Raw quote methods:', Object.keys(anchorQuote.rawQuote));
 
-    console.log('✅ FX Anchor swap submitted:', exchange.exchange.exchangeID);
+    try {
+      // The rawQuote is the quoteWrapper from FX SDK
+      // createExchange() initiates the atomic swap
+      const exchange = await anchorQuote.rawQuote.createExchange();
 
-    return {
-      success: true,
-      exchangeID: exchange.exchange.exchangeID,
-    };
+      console.log('✅ FX Anchor exchange created:', exchange);
+      console.log('   Exchange ID:', exchange?.exchange?.exchangeID);
+
+      return {
+        success: true,
+        exchangeID: exchange?.exchange?.exchangeID || 'unknown',
+      };
+    } catch (fxError: any) {
+      console.error('❌ FX Anchor createExchange failed:', fxError);
+      throw new Error(`FX Anchor swap failed: ${fxError.message}`);
+    }
   }
 }
 
