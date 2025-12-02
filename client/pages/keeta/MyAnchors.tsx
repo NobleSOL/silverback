@@ -85,17 +85,51 @@ export default function MyAnchors() {
   // Remove liquidity state
   const [removingLiq, setRemovingLiq] = useState(false);
 
-  // Load user's anchor pools
-  async function loadMyPools() {
-    if (!wallet) return;
+  // Filter state
+  const [showOnlyMyPools, setShowOnlyMyPools] = useState(false);
 
+  // Load ALL anchor pools (public) - ownership populates when wallet connected
+  async function loadAllPools() {
     setLoadingPools(true);
     try {
-      const response = await fetch(`${API_BASE}/anchor-pools/creator/${wallet.address}`);
+      // Always load all pools first
+      const response = await fetch(`${API_BASE}/anchor-pools`);
       const data = await response.json();
 
       if (data.success) {
-        setMyPools(data.pools);
+        let pools = data.pools;
+
+        // If wallet connected, fetch user positions to populate ownership
+        if (wallet) {
+          try {
+            const userResponse = await fetch(`${API_BASE}/anchor-pools/creator/${wallet.address}`);
+            const userData = await userResponse.json();
+
+            if (userData.success && userData.pools) {
+              // Create a map of user's pools with position data
+              const userPoolMap = new Map(
+                userData.pools.map((p: any) => [p.pool_address, p])
+              );
+
+              // Merge user position data into all pools
+              pools = pools.map((pool: any) => {
+                const userPool = userPoolMap.get(pool.pool_address);
+                if (userPool) {
+                  return {
+                    ...pool,
+                    userPosition: userPool.userPosition,
+                    totalShares: userPool.totalShares || pool.totalShares,
+                  };
+                }
+                return pool;
+              });
+            }
+          } catch (err) {
+            console.warn('Failed to fetch user positions:', err);
+          }
+        }
+
+        setMyPools(pools);
       }
     } catch (error: any) {
       console.error('Failed to load anchor pools:', error);
@@ -105,7 +139,7 @@ export default function MyAnchors() {
   }
 
   useEffect(() => {
-    loadMyPools();
+    loadAllPools();
   }, [wallet]);
 
   async function createAnchorPool() {
@@ -262,7 +296,7 @@ export default function MyAnchors() {
       setCreateMode(false);
 
       // Reload pools
-      await loadMyPools();
+      await loadAllPools();
     } catch (error: any) {
       console.error("Pool creation error:", error);
       toast({
@@ -298,7 +332,7 @@ export default function MyAnchors() {
           description: `New fee: ${(newFeeBps / 100).toFixed(2)}%`,
         });
 
-        await loadMyPools();
+        await loadAllPools();
       } else {
         throw new Error(data.error || "Failed to update fee");
       }
@@ -359,7 +393,7 @@ export default function MyAnchors() {
         </div>
 
         {/* Stats Dashboard - matching Base Pool design */}
-        {wallet && myPools.length > 0 && (
+        {myPools.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {/* Total Pools */}
             <div className="glass-card-elevated rounded-xl p-4">
@@ -607,13 +641,16 @@ export default function MyAnchors() {
         </div>
 
         {/* Active Pools Grid - matching Base Pool design */}
-        {wallet && !createMode && myPools.length > 0 && (
+        {!createMode && myPools.length > 0 && (
           <div className="mt-8">
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold">Your Anchor Pools</h3>
+                <h3 className="text-lg font-semibold">Active Anchor Pools</h3>
                 <p className="text-sm text-muted-foreground">
-                  {myPools.length} pool{myPools.length !== 1 ? 's' : ''} created
+                  {showOnlyMyPools
+                    ? `${myPools.filter(p => p.userPosition).length} pool${myPools.filter(p => p.userPosition).length !== 1 ? 's' : ''} with your liquidity`
+                    : `${myPools.length} pool${myPools.length !== 1 ? 's' : ''} on Silverback`
+                  }
                 </p>
               </div>
 
@@ -628,10 +665,26 @@ export default function MyAnchors() {
                 >
                   + Create Pool
                 </button>
+
+                {/* My Pools Filter */}
+                {wallet && (
+                  <button
+                    onClick={() => setShowOnlyMyPools(!showOnlyMyPools)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      showOnlyMyPools
+                        ? "bg-brand text-white"
+                        : "bg-secondary/60 hover:bg-secondary/80 border border-border/40"
+                    }`}
+                  >
+                    My Pools
+                  </button>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myPools.map((pool) => {
+              {myPools
+                .filter(pool => !showOnlyMyPools || pool.userPosition)
+                .map((pool) => {
                 // Convert AnchorPool to KeetaPoolCardData format
                 const poolCardData: KeetaPoolCardData = {
                   poolAddress: pool.pool_address,
@@ -700,7 +753,7 @@ export default function MyAnchors() {
                           });
 
                           // Reload pools to reflect changes
-                          await loadMyPools();
+                          await loadAllPools();
                         } else {
                           throw new Error(data.error || "Failed to remove liquidity");
                         }

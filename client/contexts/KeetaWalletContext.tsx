@@ -246,10 +246,14 @@ export function KeetaWalletProvider({ children }: { children: React.ReactNode })
     };
   }, [wallet]);
 
-  // Fetch pools and positions when wallet is loaded
+  // Load pools on mount (public, no wallet required)
+  useEffect(() => {
+    loadPools().catch(err => console.error('Error fetching pools:', err));
+  }, []);
+
+  // Fetch user positions when wallet connects
   useEffect(() => {
     if (wallet?.address) {
-      loadPools().catch(err => console.error('Error fetching pools:', err));
       fetchPositions().catch(err => console.error('Error fetching positions:', err));
     }
   }, [wallet?.address]);
