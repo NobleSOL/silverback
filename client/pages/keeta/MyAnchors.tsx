@@ -6,7 +6,9 @@ import {
   Wallet,
   Plus,
   ArrowDownUp,
-  Settings,
+  DollarSign,
+  Activity,
+  Droplets,
   TrendingUp,
 } from "lucide-react";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
@@ -316,20 +318,33 @@ export default function MyAnchors() {
       return {
         totalPools: 0,
         activePools: 0,
-        totalVolume24h: "$0.00",
-        totalFees24h: "$0.00",
+        totalVolume24h: "-",
+        totalFees24h: "-",
+        avgFee: "-",
       };
     }
 
     const activePools = myPools.filter(p => p.status === 'active').length;
-    const totalVolume = myPools.reduce((sum, p) => sum + parseFloat(p.volume24h || '0'), 0);
-    const totalFees = myPools.reduce((sum, p) => sum + parseFloat(p.feesCollected24h || '0'), 0);
+
+    // Volume and fees are stored in atomic units (9 decimals for Keeta tokens)
+    // Convert to human-readable format
+    const DECIMALS = 9;
+    const totalVolumeRaw = myPools.reduce((sum, p) => sum + parseFloat(p.volume24h || '0'), 0);
+    const totalFeesRaw = myPools.reduce((sum, p) => sum + parseFloat(p.feesCollected24h || '0'), 0);
+
+    // Divide by 10^9 to get human-readable amounts
+    const totalVolume = totalVolumeRaw / Math.pow(10, DECIMALS);
+    const totalFees = totalFeesRaw / Math.pow(10, DECIMALS);
+
+    // Calculate average fee across pools
+    const avgFeeBps = myPools.reduce((sum, p) => sum + p.fee_bps, 0) / myPools.length;
 
     return {
       totalPools: myPools.length,
       activePools,
-      totalVolume24h: `$${totalVolume.toFixed(2)}`,
-      totalFees24h: `$${totalFees.toFixed(2)}`,
+      totalVolume24h: totalVolume > 0 ? totalVolume.toFixed(2) : "-",
+      totalFees24h: totalFees > 0 ? totalFees.toFixed(6) : "-",
+      avgFee: (avgFeeBps / 100).toFixed(2),
     };
   }, [myPools]);
 
@@ -343,24 +358,55 @@ export default function MyAnchors() {
           </p>
         </div>
 
-        {/* Stats Dashboard */}
+        {/* Stats Dashboard - matching Base Pool design */}
         {wallet && myPools.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {/* Total Pools */}
             <div className="glass-card-elevated rounded-xl p-4">
-              <div className="text-xs text-muted-foreground mb-1">Total Pools</div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-full bg-purple-500/10 p-2">
+                  <Droplets className="h-4 w-4 text-purple-400" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">MY POOLS</span>
+              </div>
               <div className="text-2xl font-bold">{stats.totalPools}</div>
+              <div className="text-xs text-muted-foreground mt-1">{stats.activePools} active</div>
             </div>
+
+            {/* 24h Volume */}
             <div className="glass-card-elevated rounded-xl p-4">
-              <div className="text-xs text-muted-foreground mb-1">Active</div>
-              <div className="text-2xl font-bold text-green-400">{stats.activePools}</div>
-            </div>
-            <div className="glass-card-elevated rounded-xl p-4">
-              <div className="text-xs text-muted-foreground mb-1">24h Volume</div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-full bg-green-500/10 p-2">
+                  <Activity className="h-4 w-4 text-green-400" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">24H VOLUME</span>
+              </div>
               <div className="text-2xl font-bold">{stats.totalVolume24h}</div>
+              <div className="text-xs text-muted-foreground mt-1">Trading activity</div>
             </div>
+
+            {/* Fees Earned */}
             <div className="glass-card-elevated rounded-xl p-4">
-              <div className="text-xs text-muted-foreground mb-1">24h Fees Earned</div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-full bg-sky-500/10 p-2">
+                  <DollarSign className="h-4 w-4 text-sky-400" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">24H FEES</span>
+              </div>
               <div className="text-2xl font-bold text-sky-400">{stats.totalFees24h}</div>
+              <div className="text-xs text-muted-foreground mt-1">Earned from swaps</div>
+            </div>
+
+            {/* Average Fee */}
+            <div className="glass-card-elevated rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="rounded-full bg-amber-500/10 p-2">
+                  <TrendingUp className="h-4 w-4 text-amber-400" />
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">AVG FEE</span>
+              </div>
+              <div className="text-2xl font-bold text-amber-400">{stats.avgFee}%</div>
+              <div className="text-xs text-muted-foreground mt-1">Per swap</div>
             </div>
           </div>
         )}
@@ -560,10 +606,30 @@ export default function MyAnchors() {
           )}
         </div>
 
-        {/* Active Pools Grid */}
+        {/* Active Pools Grid - matching Base Pool design */}
         {wallet && !createMode && myPools.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-xl font-bold mb-4">Your FX Anchor Pools</h2>
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Your FX Anchor Pools</h3>
+                <p className="text-sm text-muted-foreground">
+                  {myPools.length} pool{myPools.length !== 1 ? 's' : ''} created
+                </p>
+              </div>
+
+              {/* Controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    setCreateMode(true);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-brand text-white hover:bg-brand/90 transition-all shadow-sm"
+                >
+                  + Create Pool
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {myPools.map((pool) => {
                 // Convert AnchorPool to KeetaPoolCardData format
