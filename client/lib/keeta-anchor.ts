@@ -240,8 +240,7 @@ export async function getAnchorEstimates(
 
 /**
  * Execute anchor swap using a quote
- * Creates an atomic SWAP transaction using SEND + RECEIVE operations
- * This results in a proper "SWAP" transaction, not two "SEND" transactions
+ * Uses 2-TX model: User sends to pool (TX1), Server sends back (TX2)
  * @throws Error if swap execution fails
  */
 export async function executeAnchorSwap(
@@ -249,7 +248,7 @@ export async function executeAnchorSwap(
   userClient: any,
   userAddress?: string
 ): Promise<{ success: boolean; exchangeID?: string }> {
-  console.log(`🚀 Executing atomic swap...`);
+  console.log(`🚀 Executing Silverback anchor swap...`);
   console.log('📋 Quote details:', {
     providerID: anchorQuote.providerID,
     from: anchorQuote.from,
@@ -264,8 +263,8 @@ export async function executeAnchorSwap(
     throw new Error('Invalid anchor quote - missing raw quote data');
   }
 
-  if (!userClient) {
-    throw new Error('User client required for swaps');
+  if (!userClient || !userAddress) {
+    throw new Error('User client and address required for swaps');
   }
 
   const signedQuote = anchorQuote.rawQuote;
@@ -284,49 +283,60 @@ export async function executeAnchorSwap(
     const tokenOut = signedQuote.request.to;
     const poolAddress = signedQuote.account;
 
-    console.log('📝 Building atomic SWAP block...');
+    console.log('📝 TX1: Sending tokens to pool...');
     console.log('   Token In:', tokenIn.slice(0, 20) + '...');
     console.log('   Amount In:', amountIn.toString());
-    console.log('   Token Out:', tokenOut.slice(0, 20) + '...');
-    console.log('   Amount Out:', amountOut.toString());
     console.log('   Pool:', poolAddress.slice(0, 20) + '...');
 
-    // Build atomic SWAP block with SEND + RECEIVE
-    // This creates a single transaction that atomically:
-    // 1. Sends tokens from user to pool
-    // 2. Receives tokens from pool to user
+    // TX1: User sends tokens to pool
     const builder = userClient.initBuilder();
-
-    // SEND: User sends amountIn of tokenIn to pool
     builder.send(poolAddress, amountIn, tokenIn);
 
-    // RECEIVE: User expects to receive amountOut of tokenOut from pool
-    // This creates the atomic swap condition - either both happen or neither
-    builder.receive(poolAddress, amountOut, tokenOut);
-
     console.log('📝 Requesting signature from wallet...');
-
-    // Sign and publish via Keythings
-    // This will prompt the user to approve the transaction
     await userClient.publishBuilder(builder);
+    console.log('✅ TX1 completed - tokens sent to pool');
 
-    // Get block hash after publishing
-    let blockHash = null;
-    if (builder.blocks && builder.blocks.length > 0) {
-      const block = builder.blocks[0];
-      if (block?.hash) {
-        blockHash = typeof block.hash === 'string'
-          ? block.hash
-          : block.hash.toString?.('hex') || block.hash.toString?.();
-      }
+    // Wait for finalization
+    console.log('⏳ Waiting for finalization (2s)...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // TX2: Request backend to complete the swap
+    console.log('📝 TX2: Requesting backend to send tokens...');
+
+    // Build quote for backend (matches anchor-service format)
+    const backendQuote = {
+      poolAddress: poolAddress,
+      tokenIn: tokenIn,
+      tokenOut: tokenOut,
+      amountIn: amountIn.toString(),
+      amountOut: amountOut.toString(),
+      amountInFormatted: anchorQuote.amountIn,
+      amountOutFormatted: anchorQuote.amountOut,
+      feeBps: signedQuote.cost?.amount ? 30 : 30, // Default to 30 bps
+    };
+
+    const response = await fetch(`${API_BASE}/anchor/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quote: backendQuote,
+        userAddress,
+      }),
+    });
+
+    const data = await response.json();
+    console.log('📡 TX2 Response:', data);
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Backend swap completion failed');
     }
 
-    console.log('✅ Atomic swap completed!');
-    console.log('   Block Hash:', blockHash || 'N/A');
+    console.log('✅ Swap completed!');
+    console.log('   Amount Out:', data.amountOut);
 
     return {
       success: true,
-      exchangeID: blockHash || 'completed',
+      exchangeID: data.poolAddress || 'completed',
     };
   } catch (error: any) {
     console.error('❌ Swap failed:', error);
