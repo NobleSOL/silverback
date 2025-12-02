@@ -49,7 +49,7 @@ export const TOKEN_META: Record<string, TokenMeta> = {
   BACK: {
     symbol: "BACK",
     name: "Silverback",
-    logo: "https://cdn.builder.io/api/v1/image/assets%2Fd70091a6f5494e0195b033a72f7e79ae%2Fee3a0a5652aa480f9aa42277503e94b2?format=webp&width=64",
+    logo: "https://raw.githubusercontent.com/NobleSOL/silverback/main/public/assets/back-logo.webp",
     address: "0x558881c4959e9cf961a7e1815fcd6586906babd2",
     decimals: 18,
   },
