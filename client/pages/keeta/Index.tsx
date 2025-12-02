@@ -34,13 +34,7 @@ import {
   getSwapQuote as getSwapQuoteClient,
   executeSwap as executeSwapClient,
 } from "@/lib/keeta-client";
-import { isKeythingsInstalled, getKeythingsProvider } from "@/lib/keythings-provider";
-import {
-  getFXSwapQuotes,
-  executeFXSwap,
-  formatAmount,
-  type FXSwapQuote,
-} from "@/lib/keeta-fx-swap";
+import { isKeythingsInstalled } from "@/lib/keythings-provider";
 
 // API base URL
 const API_BASE = import.meta.env.VITE_KEETA_API_BASE || `${window.location.origin}/api`;
@@ -78,62 +72,19 @@ export default function KeetaIndex() {
   // Swap state
   const [selectedPoolForSwap, setSelectedPoolForSwap] = useState<string>("");
   const [swapTokenIn, setSwapTokenIn] = useState<string>("");
-  const [swapTokenOut, setSwapTokenOut] = useState<string>("");
   const [swapAmount, setSwapAmount] = useState("");
   const [swapQuote, setSwapQuote] = useState<any>(null);
-  const [fxQuote, setFxQuote] = useState<FXSwapQuote | null>(null);
-  const [useFXSwap, setUseFXSwap] = useState<boolean>(true); // Default to atomic FX swaps
   const [swapping, setSwapping] = useState(false);
-  const [selectingSwapToken, setSelectingSwapToken] = useState<"from" | "to" | "pool" | null>(null);
+  const [selectingSwapToken, setSelectingSwapToken] = useState<"from" | "pool" | null>(null);
 
   // Toggle tokens function for swap
   function toggleSwapTokens() {
-    const tempIn = swapTokenIn;
-    const tempOut = swapTokenOut;
-    setSwapTokenIn(tempOut);
-    setSwapTokenOut(tempIn);
+    const tempToken = swapTokenIn;
+    setSwapTokenIn("");
     setSelectedPoolForSwap("");
-    setSwapQuote(null);
-    setFxQuote(null);
+    // Note: In current design, we select pool not individual out token
   }
 
-  // Fetch FX quote (atomic swap via resolver)
-  async function fetchFXQuote() {
-    if (!swapTokenIn || !swapTokenOut || !swapAmount || !wallet?.isKeythings) {
-      setFxQuote(null);
-      return;
-    }
-
-    try {
-      const provider = getKeythingsProvider();
-      if (!provider) {
-        console.warn('Keythings provider not available');
-        setFxQuote(null);
-        return;
-      }
-
-      const userClient = await provider.getUserClient();
-      const fromTokenInfo = sortedTokens.find((t) => t.address === swapTokenIn);
-      const decimalsFrom = fromTokenInfo?.decimals || 9;
-      const amountAtomic = BigInt(Math.floor(Number(swapAmount) * Math.pow(10, decimalsFrom)));
-
-      console.log('🔍 Fetching FX quote for atomic swap...');
-      const quotes = await getFXSwapQuotes(userClient, swapTokenIn, swapTokenOut, amountAtomic);
-
-      if (quotes.length > 0) {
-        const bestQuote = quotes[0];
-        setFxQuote(bestQuote);
-        console.log(`✅ FX quote: ${formatAmount(bestQuote.amountIn)} → ${formatAmount(bestQuote.amountOut)}`);
-      } else {
-        setFxQuote(null);
-      }
-    } catch (error) {
-      console.error('Failed to fetch FX quote:', error);
-      setFxQuote(null);
-    }
-  }
-
-  // Fetch pool-based quote (traditional two-tx model)
   function getSwapQuote() {
     if (!selectedPoolForSwap || !swapTokenIn || !swapAmount || !wallet) return;
 
@@ -180,81 +131,20 @@ export default function KeetaIndex() {
     }
   }
 
-  // Fetch quotes when inputs change
   useEffect(() => {
-    // Clear old quotes
-    setSwapQuote(null);
-    setFxQuote(null);
-
-    if (!swapAmount || !swapTokenIn) return;
-
-    // If using FX swap mode and have both tokens selected
-    if (useFXSwap && swapTokenOut && wallet?.isKeythings) {
-      const timer = setTimeout(() => fetchFXQuote(), 300);
-      return () => clearTimeout(timer);
-    }
-
-    // Otherwise use pool-based quote
-    if (selectedPoolForSwap) {
+    if (swapAmount && selectedPoolForSwap && swapTokenIn) {
       const timer = setTimeout(() => getSwapQuote(), 200);
       return () => clearTimeout(timer);
+    } else {
+      setSwapQuote(null);
     }
-  }, [swapAmount, swapTokenIn, swapTokenOut, selectedPoolForSwap, useFXSwap]);
+  }, [swapAmount, selectedPoolForSwap, swapTokenIn]);
 
   async function executeSwap() {
-    // Check if we have a valid quote (either FX or pool-based)
-    const hasFXQuote = useFXSwap && fxQuote && wallet?.isKeythings;
-    const hasPoolQuote = !useFXSwap && swapQuote && selectedPoolForSwap;
-
-    if (!wallet || !swapTokenIn || !swapAmount || (!hasFXQuote && !hasPoolQuote)) return;
+    if (!wallet || !selectedPoolForSwap || !swapTokenIn || !swapAmount || !swapQuote) return;
 
     setSwapping(true);
     try {
-      // FX Atomic Swap Flow (single transaction)
-      if (hasFXQuote && fxQuote) {
-        console.log('🚀 Executing atomic FX swap...');
-
-        const fromTokenInfo = sortedTokens.find((t) => t.address === swapTokenIn);
-        const toTokenInfo = sortedTokens.find((t) => t.address === swapTokenOut);
-        const tokenInSymbol = fromTokenInfo?.symbol || 'Token';
-        const tokenOutSymbol = toTokenInfo?.symbol || 'Token';
-
-        // Get userClient from Keythings for signing
-        const provider = getKeythingsProvider();
-        if (!provider) {
-          throw new Error('Keythings wallet not available');
-        }
-        const userClient = await provider.getUserClient();
-
-        const result = await executeFXSwap(fxQuote, userClient);
-
-        if (result.success) {
-          toast({
-            title: "Swap Successful!",
-            description: (
-              <div className="space-y-1">
-                <div>Swapped {swapAmount} {tokenInSymbol} for {formatAmount(fxQuote.amountOut)} {tokenOutSymbol}</div>
-                <div className="text-xs text-muted-foreground">Atomic SWAP transaction completed</div>
-              </div>
-            ),
-          });
-
-          // Clear form
-          setSwapAmount("");
-          setSwapQuote(null);
-          setFxQuote(null);
-
-          // Wait for blockchain to sync
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          await refreshBalances();
-        } else {
-          throw new Error(result.error || 'FX swap failed');
-        }
-
-        return;
-      }
-
-      // Pool-based swap flow (two-transaction)
       const pool = pools.find((p) => p.poolAddress === selectedPoolForSwap);
       if (!pool) {
         throw new Error("Pool not found");
@@ -567,8 +457,11 @@ export default function KeetaIndex() {
                 <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>You receive</span>
-                    {swapTokenOut && wallet && (() => {
-                      const tokenOutBalance = wallet.tokens.find(t => t.address === swapTokenOut);
+                    {selectedPoolForSwap && wallet && (() => {
+                      const pool = pools.find((p) => p.poolAddress === selectedPoolForSwap);
+                      if (!pool) return null;
+                      const tokenOut = pool.tokenA === swapTokenIn ? pool.tokenB : pool.tokenA;
+                      const tokenOutBalance = wallet.tokens.find(t => t.address === tokenOut);
                       return tokenOutBalance ? (
                         <span>
                           Bal: {tokenOutBalance.balanceFormatted}
@@ -579,77 +472,49 @@ export default function KeetaIndex() {
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setSelectingSwapToken("to")}
+                      onClick={() => setSelectingSwapToken("pool")}
                       disabled={!swapTokenIn}
                       className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {swapTokenOut && (() => {
-                        const token = wallet?.tokens.find(t => t.address === swapTokenOut);
-                        return token ? <TokenLogo src={getTokenLogo(token.symbol, token.logoUrl)} alt={token.symbol} size={20} /> : null;
+                      {selectedPoolForSwap && (() => {
+                        const pool = pools.find(p => p.poolAddress === selectedPoolForSwap);
+                        if (!pool) return null;
+                        const tokenOut = pool.tokenA === swapTokenIn ? pool.tokenB : pool.tokenA;
+                        const tokenOutSymbol = pool.tokenA === swapTokenIn ? pool.symbolB : pool.symbolA;
+                        const token = wallet?.tokens.find(t => t.address === tokenOut);
+                        return token ? <TokenLogo src={getTokenLogo(tokenOutSymbol, token.logoUrl)} alt={tokenOutSymbol} size={20} /> : null;
                       })()}
                       <span className="text-sm font-semibold">
-                        {swapTokenOut ? (wallet?.tokens.find(t => t.address === swapTokenOut)?.symbol || "Select") : "Select"}
+                        {selectedPoolForSwap ? (() => {
+                          const pool = pools.find(p => p.poolAddress === selectedPoolForSwap);
+                          if (!pool) return "Select";
+                          return pool.tokenA === swapTokenIn ? pool.symbolB : pool.symbolA;
+                        })() : "Select"}
                       </span>
                     </button>
                     <input
                       readOnly
-                      value={fxQuote ? formatAmount(fxQuote.amountOut) : swapQuote ? swapQuote.amountOutHuman : "0.00"}
+                      value={swapQuote ? swapQuote.amountOutHuman : "0.00"}
                       className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none text-muted-foreground/80"
                     />
                   </div>
-                  {swapTokenOut && (fxQuote || swapQuote) && (() => {
-                    const price = tokenPrices?.[swapTokenOut]?.priceUsd;
+                  {selectedPoolForSwap && swapQuote && (() => {
+                    const pool = pools.find((p) => p.poolAddress === selectedPoolForSwap);
+                    if (!pool) return null;
+                    const tokenOut = pool.tokenA === swapTokenIn ? pool.tokenB : pool.tokenA;
+                    const price = tokenPrices?.[tokenOut]?.priceUsd;
                     if (!price) return null;
-                    const outputAmount = fxQuote ? Number(formatAmount(fxQuote.amountOut)) : parseFloat(swapQuote?.amountOutHuman || "0");
                     return (
                       <div className="text-xs text-muted-foreground text-right mt-1">
-                        ${(outputAmount * price).toFixed(2)} USD
+                        ${(parseFloat(swapQuote.amountOutHuman) * price).toFixed(2)} USD
                       </div>
                     );
                   })()}
                 </div>
 
-                {/* Quote Details - FX atomic swap */}
-                {fxQuote && (
+                {/* Quote Details */}
+                {swapQuote && (
                   <div className="rounded-lg bg-secondary/40 p-3 space-y-2 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Swap Type</span>
-                      <span className="font-medium text-green-400 flex items-center gap-1">
-                        <ArrowRightLeft className="h-3 w-3" />
-                        Atomic SWAP
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Expected Output</span>
-                      <span className="font-medium">
-                        {formatAmount(fxQuote.amountOut)} {sortedTokens.find(t => t.address === swapTokenOut)?.symbol || 'Token'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Fee</span>
-                      <span className="font-medium">
-                        {formatAmount(fxQuote.cost)} {sortedTokens.find(t => t.address === swapTokenIn)?.symbol || 'Token'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Pool</span>
-                      <span className="font-mono text-xs text-muted-foreground">
-                        ...{fxQuote.account.slice(-12)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Quote Details - Pool-based swap (fallback) */}
-                {!fxQuote && swapQuote && (
-                  <div className="rounded-lg bg-secondary/40 p-3 space-y-2 text-sm">
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Swap Type</span>
-                      <span className="font-medium text-amber-400 flex items-center gap-1">
-                        <Send className="h-3 w-3" />
-                        Pool-based
-                      </span>
-                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Expected Output</span>
                       <span className="font-medium">{swapQuote.amountOutHuman} {swapQuote.tokenOutSymbol}</span>
@@ -669,7 +534,7 @@ export default function KeetaIndex() {
 
                 <Button
                   onClick={!wallet ? connectKeythingsWallet : executeSwap}
-                  disabled={wallet ? (swapping || !swapAmount || !swapTokenIn || !swapTokenOut || (!fxQuote && !swapQuote)) : loading}
+                  disabled={wallet ? (swapping || !swapAmount || !swapTokenIn || !selectedPoolForSwap) : loading}
                   className="w-full h-12 text-base font-semibold"
                 >
                   {!wallet ? (
@@ -780,15 +645,10 @@ export default function KeetaIndex() {
         onSelect={(token: KeetaToken) => {
           if (selectingSwapToken === "from") {
             setSwapTokenIn(token.address);
-            // Reset selections when changing input token
+            // Reset pool selection when changing input token
             setSelectedPoolForSwap("");
-            setSwapTokenOut("");
-            setFxQuote(null);
-            setSwapQuote(null);
-          } else if (selectingSwapToken === "to" && swapTokenIn) {
-            // Set output token directly for FX swap
-            setSwapTokenOut(token.address);
-            // Also find matching pool for fallback
+          } else if (selectingSwapToken === "pool" && swapTokenIn) {
+            // Find pool that connects swapTokenIn to selected output token
             const pool = pools.find(
               p =>
                 (p.tokenA === swapTokenIn && p.tokenB === token.address) ||
@@ -802,9 +662,9 @@ export default function KeetaIndex() {
         }}
         tokens={selectingSwapToken === "from"
           ? sortedTokens
-          : selectingSwapToken === "to" && swapTokenIn
+          : selectingSwapToken === "pool" && swapTokenIn
             ? (() => {
-                // Show only tokens that have pools with swapTokenIn (via FX resolver)
+                // Show only tokens that have pools with swapTokenIn
                 const availableOutputTokens = new Set<string>();
                 pools.forEach(pool => {
                   if (pool.tokenA === swapTokenIn) availableOutputTokens.add(pool.tokenB);
