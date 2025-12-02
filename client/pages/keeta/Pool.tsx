@@ -1191,6 +1191,7 @@ export default function KeetaPool() {
                     decimalsA: pool.decimalsA || 9,
                     decimalsB: pool.decimalsB || 9,
                     totalShares: pool.totalShares,
+                    feeBps: 30, // Standard 0.30% fee for AMM pools
                     userPosition: userPosition
                       ? {
                           shares: userPosition.liquidity,

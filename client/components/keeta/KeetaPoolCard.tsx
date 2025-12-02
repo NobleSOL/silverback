@@ -15,6 +15,7 @@ export interface KeetaPoolCardData {
   decimalsA?: number;
   decimalsB?: number;
   totalShares: string;
+  feeBps?: number; // Trading fee in basis points (e.g., 30 = 0.30%)
   apy?: number; // Real APY from backend (calculated from 24h reserve growth)
   volume24h?: number; // 24h trading volume
   tvl?: number; // Total value locked
@@ -122,8 +123,13 @@ export function KeetaPoolCard({
             <div className="font-semibold text-sm">
               {pool.symbolA}/{pool.symbolB}
             </div>
-            <div className="text-xs text-muted-foreground">
-              Silverback Pool
+            <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <span>Silverback Pool</span>
+              {pool.feeBps !== undefined && (
+                <span className="rounded bg-secondary/80 px-1.5 py-0.5 text-[10px] font-medium text-sky-400">
+                  {(pool.feeBps / 100).toFixed(2)}% fee
+                </span>
+              )}
             </div>
             <a
               href={`https://explorer.test.keeta.com/account/${pool.poolAddress}`}

@@ -574,6 +574,7 @@ export default function MyAnchors() {
                   decimalsA: pool.decimalsA || 9,
                   decimalsB: pool.decimalsB || 9,
                   totalShares: pool.totalShares || '0',
+                  feeBps: pool.fee_bps,
                   userPosition: pool.userPosition,
                 };
 
