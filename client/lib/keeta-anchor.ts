@@ -240,7 +240,7 @@ export async function getAnchorEstimates(
 
 /**
  * Execute anchor swap using a quote
- * Creates an atomic SWAP transaction via the FX server's createExchange endpoint
+ * Creates an atomic SWAP transaction using SEND + RECEIVE operations
  * This results in a proper "SWAP" transaction, not two "SEND" transactions
  * @throws Error if swap execution fails
  */
@@ -249,7 +249,7 @@ export async function executeAnchorSwap(
   userClient: any,
   userAddress?: string
 ): Promise<{ success: boolean; exchangeID?: string }> {
-  console.log(`🚀 Executing FX Anchor atomic swap...`);
+  console.log(`🚀 Executing atomic swap...`);
   console.log('📋 Quote details:', {
     providerID: anchorQuote.providerID,
     from: anchorQuote.from,
@@ -265,84 +265,72 @@ export async function executeAnchorSwap(
   }
 
   if (!userClient) {
-    throw new Error('User client required for FX swaps');
+    throw new Error('User client required for swaps');
   }
 
   const signedQuote = anchorQuote.rawQuote;
-  console.log('📋 Signed quote from FX server:', signedQuote);
-
-  // Validate quote has required fields
-  if (!signedQuote.request || !signedQuote.account || !signedQuote.signed) {
-    throw new Error('Invalid quote: missing required fields (request, account, or signed)');
-  }
+  console.log('📋 Quote from FX server:', signedQuote);
 
   try {
-    // Step 1: Build the swap request block using UserClient
-    // This creates a block that sends tokens to the pool
-    console.log('📝 Building swap request block...');
+    // Parse amounts from the quote
+    // Handle hex format from FX server
+    let amountOut = signedQuote.convertedAmount;
+    if (typeof amountOut === 'string') {
+      amountOut = amountOut.startsWith('0x') ? BigInt(amountOut) : BigInt(amountOut);
+    }
 
-    // Parse the amount from the quote request
     const amountIn = BigInt(signedQuote.request.amount);
     const tokenIn = signedQuote.request.from;
-    const poolAccount = signedQuote.account;
+    const tokenOut = signedQuote.request.to;
+    const poolAddress = signedQuote.account;
 
-    console.log('   Token In:', tokenIn);
+    console.log('📝 Building atomic SWAP block...');
+    console.log('   Token In:', tokenIn.slice(0, 20) + '...');
     console.log('   Amount In:', amountIn.toString());
-    console.log('   Pool Account:', poolAccount);
+    console.log('   Token Out:', tokenOut.slice(0, 20) + '...');
+    console.log('   Amount Out:', amountOut.toString());
+    console.log('   Pool:', poolAddress.slice(0, 20) + '...');
 
-    // Build the swap request using UserClient
-    // This creates a special block format that the FX server expects
+    // Build atomic SWAP block with SEND + RECEIVE
+    // This creates a single transaction that atomically:
+    // 1. Sends tokens from user to pool
+    // 2. Receives tokens from pool to user
     const builder = userClient.initBuilder();
-    builder.send(poolAccount, amountIn, tokenIn);
 
-    // Get the block without publishing
-    await builder.computeBlocks();
-    const blocks = builder.blocks;
+    // SEND: User sends amountIn of tokenIn to pool
+    builder.send(poolAddress, amountIn, tokenIn);
 
-    if (!blocks || blocks.length === 0) {
-      throw new Error('Failed to build swap block');
+    // RECEIVE: User expects to receive amountOut of tokenOut from pool
+    // This creates the atomic swap condition - either both happen or neither
+    builder.receive(poolAddress, amountOut, tokenOut);
+
+    console.log('📝 Requesting signature from wallet...');
+
+    // Sign and publish via Keythings
+    // This will prompt the user to approve the transaction
+    await userClient.publishBuilder(builder);
+
+    // Get block hash after publishing
+    let blockHash = null;
+    if (builder.blocks && builder.blocks.length > 0) {
+      const block = builder.blocks[0];
+      if (block?.hash) {
+        blockHash = typeof block.hash === 'string'
+          ? block.hash
+          : block.hash.toString?.('hex') || block.hash.toString?.();
+      }
     }
 
-    // Get the block as string for the FX server
-    const swapBlock = blocks[0];
-    const blockString = swapBlock.toString();
-
-    console.log('✅ Swap block built');
-    console.log('   Block hash:', swapBlock.hash?.toString() || 'pending');
-
-    // Step 2: Call FX server's createExchange endpoint
-    // The server will validate the quote, accept the swap, and complete it atomically
-    console.log('📡 Calling FX server createExchange...');
-
-    const response = await fetch(`${API_BASE.replace('/api', '')}/fx/api/createExchange`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        request: {
-          quote: signedQuote,
-          block: blockString,
-        },
-      }),
-    });
-
-    console.log('📡 Response status:', response.status);
-    const data = await response.json();
-    console.log('📡 Response data:', data);
-
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || 'FX createExchange failed');
-    }
-
-    console.log('✅ FX Anchor atomic swap completed!');
-    console.log('   Exchange ID:', data.exchangeID);
+    console.log('✅ Atomic swap completed!');
+    console.log('   Block Hash:', blockHash || 'N/A');
 
     return {
       success: true,
-      exchangeID: data.exchangeID,
+      exchangeID: blockHash || 'completed',
     };
   } catch (error: any) {
-    console.error('❌ FX Anchor swap failed:', error);
-    throw new Error(`FX Anchor swap failed: ${error.message}`);
+    console.error('❌ Swap failed:', error);
+    throw new Error(`Swap failed: ${error.message}`);
   }
 }
 
