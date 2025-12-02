@@ -352,7 +352,7 @@ export default function MyAnchors() {
     <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(100%_60%_at_0%_0%,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_60%),radial-gradient(80%_50%_at_100%_100%,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0)_50%)]">
       <div className="container py-8 sm:py-10">
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold mb-2">My FX Anchors</h1>
+          <h1 className="text-3xl font-bold mb-2">Silverback Anchor Pools</h1>
           <p className="text-muted-foreground text-sm">
             Create and manage your own FX anchor pools to earn trading fees
           </p>
@@ -611,7 +611,7 @@ export default function MyAnchors() {
           <div className="mt-8">
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold">Your FX Anchor Pools</h3>
+                <h3 className="text-lg font-semibold">Your Anchor Pools</h3>
                 <p className="text-sm text-muted-foreground">
                   {myPools.length} pool{myPools.length !== 1 ? 's' : ''} created
                 </p>
