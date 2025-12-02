@@ -60,7 +60,7 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-1">
             <NavItem to="/" label="Swap" />
             <NavItem to="/pool" label="Pool" />
-            <NavItem to="/portfolio" label={network === "Keeta" ? "Anchor" : "Positions"} />
+            {network !== "Keeta" && <NavItem to="/portfolio" label="Positions" />}
             {network === "Keeta" && <NavItem to="/my-anchors" label="Anchors" />}
           </nav>
         </div>
@@ -84,7 +84,7 @@ export function Header() {
               >
                 <Link to="/" className="block rounded-sm px-3 py-2 text-sm hover:bg-accent" onClick={() => setMobileOpen(false)}>Swap</Link>
                 <Link to="/pool" className="block rounded-sm px-3 py-2 text-sm hover:bg-accent" onClick={() => setMobileOpen(false)}>Pool</Link>
-                <Link to="/portfolio" className="block rounded-sm px-3 py-2 text-sm hover:bg-accent" onClick={() => setMobileOpen(false)}>{network === "Keeta" ? "Anchor" : "Positions"}</Link>
+                {network !== "Keeta" && <Link to="/portfolio" className="block rounded-sm px-3 py-2 text-sm hover:bg-accent" onClick={() => setMobileOpen(false)}>Positions</Link>}
                 {network === "Keeta" && <Link to="/my-anchors" className="block rounded-sm px-3 py-2 text-sm hover:bg-accent" onClick={() => setMobileOpen(false)}>Anchors</Link>}
               </div>
             )}
