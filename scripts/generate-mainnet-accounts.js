@@ -26,18 +26,22 @@ const ACCOUNT_TYPES = {
     name: 'OPS Account',
     description: 'Signs pool operations (swaps, liquidity, etc.)',
     envVar: 'OPS_SEED',
+    // On-chain metadata
+    chainName: 'SILVERBACK_ROUTER',
+    chainDescription: 'SILVERBACK_TRADING_ROUTER',
   },
   treasury: {
     name: 'Treasury Account',
     description: 'Collects protocol fees (0.05% of swaps)',
     envVar: 'TREASURY_ADDRESS',
-  },
-  resolver: {
-    name: 'FX Resolver Account',
-    description: 'Storage account for FX service metadata',
-    envVar: 'FX_RESOLVER_ADDRESS',
+    // On-chain metadata
+    chainName: 'Silverback Treasury',
+    chainDescription: 'Protocol fee collection for Silverback DEX',
   },
 };
+
+// Note: FX Resolver is a STORAGE account, created separately via publish-fx-resolver.js
+// It stores metadata for FX service discovery, not a wallet account
 
 /**
  * Generate a new account with BIP39 mnemonic
@@ -77,6 +81,10 @@ function generateAccount(type) {
 
   console.log('\n📍 PUBLIC ADDRESS:');
   console.log(`   ${publicKey}`);
+
+  console.log('\n🏷️  ON-CHAIN METADATA (set after funding):');
+  console.log(`   Name: ${config.chainName}`);
+  console.log(`   Description: ${config.chainDescription}`);
 
   console.log('\n🔑 SEED (hex) - ADD THIS TO RENDER ENV VARS:');
   console.log(`   ${config.envVar}=${seedHex}`);

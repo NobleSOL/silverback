@@ -165,7 +165,7 @@ export async function publishFXMetadataToResolver(storageAccountAddress = null) 
     builder.setInfo(
       {
         name: 'SILVERBACK_FX_RESOLVER',
-        description: 'FX service metadata for Silverback DEX anchor pools',
+        description: 'FX service for Silverback DEX anchor pools',
         metadata: formattedMetadata,  // This is the key field for resolver discovery
         defaultPermission: new KeetaNet.lib.Permissions(basePermissions),
       },
