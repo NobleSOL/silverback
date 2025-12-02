@@ -8,6 +8,7 @@ import {
   Wallet,
   ArrowDownUp,
   Info,
+  Zap,
 } from "lucide-react";
 import QuickFill from "@/components/shared/QuickFill";
 import TrendingPills from "@/components/shared/TrendingPills";
@@ -15,6 +16,7 @@ import TokenLogo from "@/components/shared/TokenLogo";
 import { useKeetaWallet } from "@/contexts/KeetaWalletContext";
 import KeetaTokenSelector, { type KeetaToken } from "@/components/keeta/KeetaTokenSelector";
 import { getSwapQuote as getPoolQuote } from "@/lib/keeta-client";
+import { getAnchorQuotes, executeAnchorSwap, type AnchorQuote } from "@/lib/keeta-anchor";
 
 // KTA logo URL
 const KTA_LOGO = "https://raw.githubusercontent.com/keeta-network/brand/main/logo-dark.svg";
@@ -62,6 +64,16 @@ export default function KeetaIndex() {
   const [swapping, setSwapping] = useState(false);
   const [selectingToken, setSelectingToken] = useState<"from" | "to" | null>(null);
 
+  // Anchor swap state
+  const [anchorTokenIn, setAnchorTokenIn] = useState<string>("");
+  const [anchorTokenOut, setAnchorTokenOut] = useState<string>("");
+  const [anchorAmount, setAnchorAmount] = useState("");
+  const [anchorQuotes, setAnchorQuotes] = useState<AnchorQuote[]>([]);
+  const [selectedAnchorQuote, setSelectedAnchorQuote] = useState<AnchorQuote | null>(null);
+  const [anchorLoading, setAnchorLoading] = useState(false);
+  const [anchorSwapping, setAnchorSwapping] = useState(false);
+  const [selectingAnchorToken, setSelectingAnchorToken] = useState<"from" | "to" | null>(null);
+
   // Get available pools for current token selection
   const availablePools = useMemo(() => {
     if (!swapTokenIn) return [];
@@ -70,13 +82,17 @@ export default function KeetaIndex() {
     );
   }, [swapTokenIn, pools, allPools]);
 
-  // Get token info
+  // Get token info (Pool mode)
   const fromTokenInfo = sortedTokens.find((t) => t.address === swapTokenIn);
   const selectedPoolData = (allPools || pools).find(p => p.poolAddress === selectedPool);
   const tokenOutAddress = selectedPoolData
     ? (selectedPoolData.tokenA === swapTokenIn ? selectedPoolData.tokenB : selectedPoolData.tokenA)
     : "";
   const toTokenInfo = sortedTokens.find((t) => t.address === tokenOutAddress);
+
+  // Get token info (Anchor mode)
+  const anchorFromTokenInfo = sortedTokens.find((t) => t.address === anchorTokenIn);
+  const anchorToTokenInfo = sortedTokens.find((t) => t.address === anchorTokenOut);
 
   // Toggle tokens
   function toggleTokens() {
@@ -243,6 +259,114 @@ export default function KeetaIndex() {
       });
     } finally {
       setSwapping(false);
+    }
+  }
+
+  // Toggle anchor tokens
+  function toggleAnchorTokens() {
+    const temp = anchorTokenIn;
+    setAnchorTokenIn(anchorTokenOut);
+    setAnchorTokenOut(temp);
+    setAnchorQuotes([]);
+    setSelectedAnchorQuote(null);
+  }
+
+  // Fetch anchor quotes
+  async function fetchAnchorQuotes() {
+    if (!wallet || !anchorTokenIn || !anchorTokenOut || !anchorAmount) {
+      setAnchorQuotes([]);
+      setSelectedAnchorQuote(null);
+      return;
+    }
+
+    setAnchorLoading(true);
+    try {
+      const { getKeythingsProvider } = await import('@/lib/keythings-provider');
+      const provider = getKeythingsProvider();
+      if (!provider) throw new Error('Keythings provider not found');
+
+      const userClient = await provider.getUserClient();
+      const decimalsFrom = anchorFromTokenInfo?.decimals || 9;
+      const decimalsTo = anchorToTokenInfo?.decimals || 9;
+
+      // Convert to atomic units
+      const amountAtomic = BigInt(Math.floor(parseFloat(anchorAmount) * Math.pow(10, decimalsFrom)));
+
+      const quotes = await getAnchorQuotes(
+        userClient,
+        anchorTokenIn,
+        anchorTokenOut,
+        amountAtomic,
+        decimalsFrom,
+        decimalsTo
+      );
+
+      setAnchorQuotes(quotes);
+      if (quotes.length > 0) {
+        setSelectedAnchorQuote(quotes[0]); // Select best quote
+      } else {
+        setSelectedAnchorQuote(null);
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch anchor quotes:', error);
+      setAnchorQuotes([]);
+      setSelectedAnchorQuote(null);
+    } finally {
+      setAnchorLoading(false);
+    }
+  }
+
+  // Debounced anchor quote fetching
+  useEffect(() => {
+    if (swapMode === "anchor" && anchorAmount && anchorTokenIn && anchorTokenOut && wallet) {
+      const timer = setTimeout(() => fetchAnchorQuotes(), 500);
+      return () => clearTimeout(timer);
+    } else if (swapMode === "anchor") {
+      setAnchorQuotes([]);
+      setSelectedAnchorQuote(null);
+    }
+  }, [anchorAmount, anchorTokenIn, anchorTokenOut, swapMode, wallet]);
+
+  // Execute anchor swap
+  async function executeAnchorSwapFn() {
+    if (!wallet || !selectedAnchorQuote) return;
+
+    setAnchorSwapping(true);
+    try {
+      const { getKeythingsProvider } = await import('@/lib/keythings-provider');
+      const provider = getKeythingsProvider();
+      if (!provider) throw new Error('Keythings provider not found');
+
+      const userClient = await provider.getUserClient();
+
+      const result = await executeAnchorSwap(
+        selectedAnchorQuote,
+        userClient,
+        wallet.address
+      );
+
+      if (result.success) {
+        toast({
+          title: "Swap Successful!",
+          description: `Swapped ${anchorAmount} ${anchorFromTokenInfo?.symbol || 'tokens'} via ${selectedAnchorQuote.providerID}`,
+        });
+
+        // Clear and refresh
+        setAnchorAmount("");
+        setAnchorQuotes([]);
+        setSelectedAnchorQuote(null);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await refreshBalances();
+      }
+    } catch (error: any) {
+      console.error('Anchor swap failed:', error);
+      toast({
+        title: "Swap Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setAnchorSwapping(false);
     }
   }
 
@@ -414,24 +538,158 @@ export default function KeetaIndex() {
                   </Button>
                 </div>
               ) : (
-                /* Anchor Swap Mode - Coming Soon */
-                <div className="space-y-4 py-8 text-center">
-                  <div className="rounded-full bg-sky-500/10 w-16 h-16 mx-auto flex items-center justify-center">
-                    <Info className="h-8 w-8 text-sky-400" />
+                /* Anchor Swap Mode */
+                <div className="space-y-3">
+                  {/* QuickFill */}
+                  <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Select a share of your balance</span>
+                    <QuickFill
+                      balance={anchorFromTokenInfo ? parseFloat(anchorFromTokenInfo.balanceFormatted) : undefined}
+                      onSelect={setAnchorAmount}
+                      percents={[25, 50, 75, 100]}
+                    />
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">FX Anchor Swaps</h3>
-                    <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                      Anchor swaps use the FX protocol for atomic cross-chain style swaps.
-                      This feature requires your Keythings wallet to have the Silverback resolver configured.
-                    </p>
+
+                  {/* From Token */}
+                  <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>You pay</span>
+                      {anchorFromTokenInfo && <span>Bal: {anchorFromTokenInfo.balanceFormatted}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectingAnchorToken("from")}
+                        className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        {anchorFromTokenInfo && <TokenLogo src={getTokenLogo(anchorFromTokenInfo.symbol, anchorFromTokenInfo.logoUrl)} alt={anchorFromTokenInfo.symbol} size={20} />}
+                        <span className="text-sm font-semibold">
+                          {anchorFromTokenInfo ? anchorFromTokenInfo.symbol : "Select"}
+                        </span>
+                      </button>
+                      <input
+                        inputMode="decimal"
+                        pattern="^[0-9]*[.,]?[0-9]*$"
+                        placeholder="0.00"
+                        value={anchorAmount}
+                        onChange={(e) => setAnchorAmount(e.target.value.replace(",", "."))}
+                        className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none placeholder:text-muted-foreground/60"
+                      />
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Resolver: <code className="bg-secondary/60 px-1.5 py-0.5 rounded">keeta_asnqu5q...kwtlqhle5cgcjm</code>
+
+                  {/* Swap Arrow */}
+                  <div className="relative flex justify-center -my-2">
+                    <button
+                      type="button"
+                      onClick={toggleAnchorTokens}
+                      className="rounded-xl border border-border/60 bg-card p-2 shadow-md hover:bg-card/80 transition-colors cursor-pointer z-10"
+                    >
+                      <ArrowDownUp className="h-4 w-4" />
+                    </button>
                   </div>
-                  <p className="text-xs text-amber-400">
-                    Pool swaps are recommended for most trades.
-                  </p>
+
+                  {/* To Token */}
+                  <div className="rounded-xl border border-border/60 bg-secondary/60 p-4">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>You receive</span>
+                      {anchorToTokenInfo && <span>Bal: {anchorToTokenInfo.balanceFormatted}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectingAnchorToken("to")}
+                        className="min-w-24 sm:min-w-28 shrink-0 rounded-lg bg-card hover:bg-card/80 px-3 py-2 flex items-center gap-2 cursor-pointer transition-colors"
+                      >
+                        {anchorToTokenInfo && <TokenLogo src={getTokenLogo(anchorToTokenInfo.symbol, anchorToTokenInfo.logoUrl)} alt={anchorToTokenInfo.symbol} size={20} />}
+                        <span className="text-sm font-semibold">
+                          {anchorToTokenInfo ? anchorToTokenInfo.symbol : "Select"}
+                        </span>
+                      </button>
+                      <input
+                        readOnly
+                        value={anchorLoading ? "..." : selectedAnchorQuote?.amountOut || "0.00"}
+                        className="ml-auto flex-1 min-w-0 bg-transparent text-right text-2xl sm:text-3xl font-semibold outline-none text-muted-foreground/80"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Quote Details */}
+                  {selectedAnchorQuote && (
+                    <div className="rounded-lg bg-secondary/40 p-3 space-y-2 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Route</span>
+                        <span className="font-medium flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-sky-400" />
+                          {selectedAnchorQuote.providerID}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Expected Output</span>
+                        <span className="font-medium">{selectedAnchorQuote.amountOut} {anchorToTokenInfo?.symbol}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Price Impact</span>
+                        <span className={Number(selectedAnchorQuote.priceImpact) > 5 ? "text-red-400 font-medium" : "font-medium"}>
+                          {selectedAnchorQuote.priceImpact.toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Fee</span>
+                        <span className="font-medium">{selectedAnchorQuote.fee} {anchorFromTokenInfo?.symbol}</span>
+                      </div>
+                      {anchorQuotes.length > 1 && (
+                        <div className="pt-1 border-t border-border/40 text-xs text-muted-foreground">
+                          {anchorQuotes.length} quotes found - best rate selected
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No quotes message */}
+                  {anchorTokenIn && anchorTokenOut && anchorAmount && !anchorLoading && anchorQuotes.length === 0 && (
+                    <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-3 text-sm text-yellow-400 flex items-center gap-2">
+                      <Info className="h-4 w-4 shrink-0" />
+                      <span>No anchor quotes available for this pair.</span>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={!wallet ? connectKeythingsWallet : executeAnchorSwapFn}
+                    disabled={wallet ? (anchorSwapping || anchorLoading || !anchorAmount || !anchorTokenIn || !anchorTokenOut || !selectedAnchorQuote) : loading}
+                    className="w-full h-12 text-base font-semibold"
+                  >
+                    {!wallet ? (
+                      loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Wallet className="mr-2 h-4 w-4" />
+                          Connect Wallet
+                        </>
+                      )
+                    ) : anchorLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Finding Best Route...
+                      </>
+                    ) : anchorSwapping ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Swapping...
+                      </>
+                    ) : (
+                      "Swap via Anchor"
+                    )}
+                  </Button>
+
+                  {/* Resolver info */}
+                  <div className="text-xs text-center text-muted-foreground">
+                    Using Silverback resolver for FX anchor swaps
+                  </div>
                 </div>
               )}
             </div>
@@ -489,7 +747,7 @@ export default function KeetaIndex() {
         </DialogContent>
       </Dialog>
 
-      {/* Token Selector */}
+      {/* Token Selector (Pool Mode) */}
       <KeetaTokenSelector
         open={selectingToken !== null}
         onClose={() => setSelectingToken(null)}
@@ -526,6 +784,26 @@ export default function KeetaIndex() {
             : []
         }
         excludeAddress={swapTokenIn}
+      />
+
+      {/* Token Selector (Anchor Mode) */}
+      <KeetaTokenSelector
+        open={selectingAnchorToken !== null}
+        onClose={() => setSelectingAnchorToken(null)}
+        onSelect={(token: KeetaToken) => {
+          if (selectingAnchorToken === "from") {
+            setAnchorTokenIn(token.address);
+            setAnchorQuotes([]);
+            setSelectedAnchorQuote(null);
+          } else if (selectingAnchorToken === "to") {
+            setAnchorTokenOut(token.address);
+            setAnchorQuotes([]);
+            setSelectedAnchorQuote(null);
+          }
+          setSelectingAnchorToken(null);
+        }}
+        tokens={sortedTokens}
+        excludeAddress={selectingAnchorToken === "from" ? anchorTokenOut : anchorTokenIn}
       />
     </div>
   );
