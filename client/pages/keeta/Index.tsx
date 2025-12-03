@@ -191,7 +191,7 @@ export default function KeetaIndex() {
         if (!provider) throw new Error('Keythings provider not found');
 
         const userClient = await provider.getUserClient();
-        const TREASURY_ADDRESS = 'keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy';
+        const TREASURY_ADDRESS = 'keeta_aabaolle2k3hceayy4vkyw7smgl35o5wbqeebt2fibyx5sxxodneqb2rmwqkjci';
 
         // TX1: User sends tokens to pool + treasury
         const tx1Builder = userClient.initBuilder();

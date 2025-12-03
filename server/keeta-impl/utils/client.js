@@ -66,8 +66,8 @@ export function createUserClient(seedHex, accountIndex = 0) {
  */
 export function getTreasuryAccount() {
   if (!treasuryAccount) {
-    // Hardcoded treasury address (avoids index derivation issues)
-    const TREASURY_ADDRESS = 'keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy';
+    // Hardcoded treasury address (mainnet SILVERBACK_TREASURY)
+    const TREASURY_ADDRESS = 'keeta_aabaolle2k3hceayy4vkyw7smgl35o5wbqeebt2fibyx5sxxodneqb2rmwqkjci';
     treasuryAccount = accountFromAddress(TREASURY_ADDRESS);
     console.log('✅ Treasury account loaded:', treasuryAccount.publicKeyString.get());
   }

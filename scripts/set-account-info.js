@@ -18,7 +18,7 @@
 import 'dotenv/config';
 import * as KeetaNet from '@keetanetwork/keetanet-client';
 
-const NETWORK = process.env.VITE_KEETA_NETWORK || 'main';
+const NETWORK = process.env.NETWORK || process.env.VITE_KEETA_NETWORK || 'main';
 
 // Account configurations
 const ACCOUNTS = {
@@ -31,8 +31,8 @@ const ACCOUNTS = {
   treasury: {
     name: 'Treasury Account',
     seedEnv: 'TREASURY_SEED',
-    chainName: 'Silverback Treasury',
-    chainDescription: 'Protocol fee collection for Silverback DEX',
+    chainName: 'SILVERBACK_TREASURY',
+    chainDescription: 'SILVERBACK_FEE_COLLECTION',
   },
 };
 
@@ -68,16 +68,20 @@ async function setAccountInfo(type) {
   console.log(`   Address: ${publicKey}`);
 
   // Create UserClient
-  const userClient = KeetaNet.UserClient.fromNetwork(NETWORK, account);
+  const userClient = await KeetaNet.UserClient.fromNetwork(NETWORK, account);
 
-  // Check balance first
-  const balance = await userClient.client.getBalance(account);
-  console.log(`   Balance: ${balance} (need some KTA for tx fee)`);
-
-  if (balance === 0n) {
-    console.log('\n❌ Account has no balance! Fund it with KTA first.');
-    console.log(`   Send KTA to: ${publicKey}`);
-    return { success: false, error: 'No balance' };
+  // Try to check balance (may fail for new accounts)
+  try {
+    const balance = await userClient.client.getBalance(account);
+    console.log(`   Balance: ${balance} (need some KTA for tx fee)`);
+    if (balance === 0n) {
+      console.log('\n❌ Account has no balance! Fund it with KTA first.');
+      console.log(`   Send KTA to: ${publicKey}`);
+      return { success: false, error: 'No balance' };
+    }
+  } catch (balanceError) {
+    console.log(`   Balance check failed: ${balanceError.message}`);
+    console.log('   Continuing anyway (account may be newly created)...');
   }
 
   // Build setInfo transaction
@@ -87,6 +91,7 @@ async function setAccountInfo(type) {
   builder.setInfo({
     name: config.chainName,
     description: config.chainDescription,
+    metadata: '',  // Required field, empty for basic accounts
   });
 
   // Publish

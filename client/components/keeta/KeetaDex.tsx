@@ -875,8 +875,8 @@ export default function KeetaDex() {
         console.log('🔐 Requesting user client from Keythings...');
         const userClient = await provider.getUserClient();
 
-        // Treasury address (hardcoded to match backend)
-        const TREASURY_ADDRESS = 'keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy';
+        // Treasury address (mainnet SILVERBACK_TREASURY)
+        const TREASURY_ADDRESS = 'keeta_aabaolle2k3hceayy4vkyw7smgl35o5wbqeebt2fibyx5sxxodneqb2rmwqkjci';
 
         // Build TX1: User sends tokenIn to pool + treasury
         console.log('📝 Building TX1 (user sends tokens to pool + treasury)...');
