@@ -754,6 +754,41 @@ router.post('/cleanup-anchor-pools', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/reload-pools
+ *
+ * Clear in-memory pool cache and reload from database
+ * Use after clearing database to reflect changes immediately
+ */
+router.post('/reload-pools', async (req, res) => {
+  try {
+    console.log('🔄 Reloading pools from database...\n');
+
+    const poolManager = await getPoolManager();
+
+    // Clear in-memory caches
+    poolManager.pools.clear();
+    poolManager.poolAddresses.clear();
+
+    // Reload from database
+    await poolManager.loadPools();
+
+    console.log(`✅ Reloaded ${poolManager.pools.size} pools from database`);
+
+    res.json({
+      success: true,
+      message: 'Pools reloaded from database',
+      poolCount: poolManager.pools.size,
+    });
+  } catch (error) {
+    console.error('❌ Reload failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * POST /api/admin/clear-all-pools
  *
  * Delete all pools from database (for mainnet migration)
