@@ -753,4 +753,52 @@ router.post('/cleanup-anchor-pools', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/admin/clear-all-pools
+ *
+ * Delete all pools from database (for mainnet migration)
+ * Also clears LP positions and snapshots
+ */
+router.post('/clear-all-pools', async (req, res) => {
+  try {
+    console.log('🗑️  Clearing all pools from database...\n');
+
+    const { getDbPool } = await import('../db/client.js');
+    const dbPool = getDbPool();
+
+    // Delete in order (foreign key constraints)
+    const deleteSnapshots = await dbPool.query('DELETE FROM pool_snapshots');
+    console.log(`✅ Deleted ${deleteSnapshots.rowCount} snapshots`);
+
+    const deleteLP = await dbPool.query('DELETE FROM lp_positions');
+    console.log(`✅ Deleted ${deleteLP.rowCount} LP positions`);
+
+    const deletePools = await dbPool.query('DELETE FROM pools');
+    console.log(`✅ Deleted ${deletePools.rowCount} pools`);
+
+    // Also clear anchor pools
+    const deleteAnchors = await dbPool.query('DELETE FROM anchor_pools');
+    console.log(`✅ Deleted ${deleteAnchors.rowCount} anchor pools`);
+
+    console.log('\n✅ All pools cleared!');
+
+    res.json({
+      success: true,
+      message: 'All pools cleared from database',
+      deleted: {
+        pools: deletePools.rowCount,
+        lpPositions: deleteLP.rowCount,
+        snapshots: deleteSnapshots.rowCount,
+        anchorPools: deleteAnchors.rowCount,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Clear pools failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
 export default router;
