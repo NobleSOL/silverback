@@ -2,7 +2,7 @@
 
 This guide explains how Silverback anchor pools integrate with the Keeta FX resolver system.
 
-## Current Status
+## Current Status (Mainnet)
 
 | Component | Status | Details |
 |-----------|--------|---------|
@@ -10,12 +10,31 @@ This guide explains how Silverback anchor pools integrate with the Keeta FX reso
 | Resolver Registration | ✅ Registered | Account: `keeta_asnqu5qxwxq2r...` |
 | Protocol Fees (0.05%) | ✅ Active | Tracked per swap, collectible to treasury |
 | Auto-Publish | ✅ Enabled | New pools automatically update resolver |
+| Keythings Integration | ✅ Ready | Users can add Silverback resolver in wallet |
+
+## Adding Silverback to Keythings Wallet
+
+Users can swap directly in Keythings wallet using Silverback pools:
+
+1. Open Keythings wallet → **Swap** tab
+2. Click **Settings** (gear icon) → **Manage Resolvers**
+3. Add Silverback resolver (use mainnet address from Key Accounts above)
+4. Save and select Silverback as your swap provider
+5. Wallet will now route swaps through Silverback pools
 
 ## Key Accounts
 
+### Mainnet
+```
+Resolver Account: TBD (run publish after first pool created)
+OPS/Router:       keeta_aabwgiqyij4scwktdoczzvhpi33btieeses5sezeqzqmpi5ik76ttyegwuvfsai
+Treasury Account: keeta_aabaolle2k3hceayy4vkyw7smgl35o5wbqeebt2fibyx5sxxodneqb2rmwqkjci
+KTA Token:        keeta_anqdilpazdekdu4acw65fj7smltcp26wbrildkqtszqvverljpwpezmd44ssg
+```
+
+### Testnet
 ```
 Resolver Account: keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm
-Treasury Account: keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy
 ```
 
 ## Architecture

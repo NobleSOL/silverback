@@ -16,8 +16,8 @@ function getConfig() {
       LP_FEE_BPS: Number(process.env.LP_FEE_BPS || 25),               // LP: 0.25% (stays in pool)
       PROTOCOL_FEE_BPS: Number(process.env.PROTOCOL_FEE_BPS || 5),    // Protocol: 0.05% (to treasury)
 
-      // Known tokens
-      BASE_TOKEN: process.env.BASE_TOKEN || 'keeta_anyiff4v34alvumupagmdyosydeq24lc4def5mrpmmyhx3j6vj2uucckeqn52',
+      // Known tokens (mainnet KTA)
+      BASE_TOKEN: process.env.BASE_TOKEN || 'keeta_anqdilpazdekdu4acw65fj7smltcp26wbrildkqtszqvverljpwpezmd44ssg',
 
       // Server
       PORT: Number(process.env.PORT || 8888),
@@ -87,12 +87,10 @@ export function seedFromHexEnv(varName) {
 // Token decimals cache (in-memory for now)
 const decimalsCache = new Map();
 
-// Pre-populate known tokens
+// Pre-populate known tokens (mainnet)
 const KNOWN_TOKEN_DECIMALS = {
-  // KTA token
-  'keeta_anyiff4v34alvumupagmdyosydeq24lc4def5mrpmmyhx3j6vj2uucckeqn52': 9,
-  // RIDE token
-  'keeta_anchh4m5ukgvnx5jcwe56k3ltgo4x4kppicdjgcaftx4525gdvknf73fotmdo': 5,
+  // KTA token (mainnet)
+  'keeta_anqdilpazdekdu4acw65fj7smltcp26wbrildkqtszqvverljpwpezmd44ssg': 9,
 };
 
 // Initialize cache with known tokens

@@ -33,7 +33,7 @@ pnpm typecheck              # TypeScript validation
 pnpm test                   # Run Vitest tests
 ```
 
-**Note**: Port 3000 is required for Keythings wallet compatibility (localhost:3000 is allowlisted)
+**Note**: Port 3000 is used for development. Keythings wallet works with any domain.
 
 ### Smart Contracts (Hardhat)
 ```bash
@@ -213,7 +213,7 @@ Frontend deployable to Netlify (config in `netlify.toml`).
 - **Pool Page**: Create/manage AMM pools, add/remove liquidity
 - **Anchor Page**: FX Anchor trading aggregator (queries official FX anchors + Silverback pools)
 - **My Anchors Page**: Create and manage user-owned anchor pools with custom fees
-- **Wallet**: Keythings browser extension (localhost:3000 required)
+- **Wallet**: Keythings browser extension (Chrome Web Store)
 - **Backend**: Express APIs for pools, anchors, swaps, transfers
 - **Database**: PostgreSQL for pool/anchor metadata, transactions, volume tracking
 
@@ -238,10 +238,14 @@ server/keeta-impl/
     └── anchor-repository.js     # Data access layer
 ```
 
+### Key Accounts (Mainnet)
+- **Resolver**: TBD (publish after first pool created)
+- **OPS/Router**: `keeta_aabwgiqyij4scwktdoczzvhpi33btieeses5sezeqzqmpi5ik76ttyegwuvfsai`
+- **Treasury**: `keeta_aabaolle2k3hceayy4vkyw7smgl35o5wbqeebt2fibyx5sxxodneqb2rmwqkjci`
+- **KTA Token**: `keeta_anqdilpazdekdu4acw65fj7smltcp26wbrildkqtszqvverljpwpezmd44ssg`
+
 ### Key Accounts (Testnet)
 - **Resolver**: `keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm`
-- **Treasury**: `keeta_aabtozgfunwwvwdztv54y6l5x57q2g3254shgp27zjltr2xz3pyo7q4tjtmsamy`
-- **OPS**: Configured via `OPS_SEED` environment variable
 
 ### Fee Structure
 - **Pool Creator Fee**: 0.3% (default, configurable per pool)
@@ -289,7 +293,7 @@ When a new anchor pool is created, the FX resolver metadata is automatically upd
 - `client/pages/keeta/Anchor.tsx` - Trading UI
 - `server/keeta-impl/services/fx-anchor-server.js` - FX SDK server
 
-**Status**: ✅ Fully operational on testnet. Resolver registered, swaps working, fee collection active.
+**Status**: ✅ Fully operational on mainnet. Resolver registered, swaps working, fee collection active.
 
 ## Important Notes
 
@@ -297,7 +301,7 @@ When a new anchor pool is created, the FX resolver metadata is automatically upd
 - **Network switching**: Header dropdown toggles between Base/Keeta, changes all pages
 - **Design system**: Glass-morphism cards, monochrome theme, consistent across networks
 - Path aliases: `@/*` → `client/`, `@shared/*` → `shared/`
-- **Development port**: 3000 (required for Keythings wallet allowlist)
+- **Development port**: 3000 (default, can be changed)
 - Single-port development with Vite HMR for both client and server
 - Package manager: **pnpm** (specified in package.json)
 - React Router 6 in SPA mode (not file-based routing)

@@ -89,8 +89,7 @@ Welcome to the Silverback DEX documentation center. Find everything you need to 
 - **Mainnet RPC**: https://api.keeta.com
 - **Testnet RPC**: https://api.test.keeta.com
 - **Explorer**: https://explorer.keeta.com
-- **Wallet**: [Keythings](https://keythings.xyz)
-- **Required URL**: localhost:3000 (for Keythings compatibility)
+- **Wallet**: [Keythings](https://keythings.xyz) (Chrome Web Store)
 
 ---
 
@@ -146,7 +145,7 @@ Potential loss from price divergence when providing liquidity vs. holding tokens
 | Issue | Solution |
 |-------|----------|
 | Transaction failed | Check gas fees, increase slippage tolerance |
-| Keythings not connecting | Use localhost:3000, check extension installed |
+| Keythings not connecting | Install from Chrome Web Store, refresh page |
 | Can't create anchor pool | Verify token balances, check for duplicate pairs |
 | Tokens not showing | Add token address manually to wallet |
 | Swap quote not loading | Check network connection, refresh page |

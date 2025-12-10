@@ -27,9 +27,8 @@ Welcome to Silverback DEX - a dual-network decentralized exchange supporting bot
 - Tokens you want to trade
 
 #### For Keeta Network:
-- **Keythings wallet** browser extension ([Download here](https://keythings.xyz))
+- **Keythings wallet** browser extension ([Install from Chrome Web Store](https://keythings.xyz))
 - KTA tokens for transaction fees
-- Access the DEX at `localhost:3000` (Keythings only works with this URL)
 
 ### Connecting Your Wallet
 
@@ -86,15 +85,18 @@ Silverback DEX operates on two separate networks:
 4. Click **"Swap"** and confirm in Keythings wallet
 
 #### Option 2: FX Anchor Swaps (Recommended - Best Rates)
-Silverback pools are now discoverable directly in **Keythings wallet**!
+Silverback pools are discoverable directly in **Keythings wallet**!
 
-**Via Keythings Wallet:**
-1. Open Keythings wallet
-2. Go to **Swap** tab
-3. Add Silverback resolver: `keeta_asnqu5qxwxq2rhuh77s3iciwhtvra2n7zxviva2ukwqbbxkwxtlqhle5cgcjm`
-4. Select your token pair
-5. Wallet automatically finds best rate across all providers
-6. Confirm swap - executes as atomic SWAP transaction
+**Via Keythings Wallet (Recommended):**
+1. Open Keythings wallet → **Swap** tab
+2. Click **Settings** (gear icon) → **Manage Resolvers**
+3. Add Silverback resolver (check docs for current address)
+4. Save and select Silverback as swap provider
+5. Select your token pair and enter amount
+6. Wallet automatically finds best rate (zero wallet fees!)
+7. Confirm swap - executes as atomic SWAP transaction
+
+**Note**: Keythings charges **zero fees** for swaps. Only the pool creator's fee (typically 0.3%) applies.
 
 **Via Silverback UI:**
 1. Navigate to **Keeta → Anchor** page
@@ -305,10 +307,10 @@ Navigate to **Keeta → My Anchors**:
 
 #### Keythings Wallet Not Connecting
 **Solutions**:
-- Ensure Keythings extension is installed
-- Access DEX at `localhost:3000` (required for Keythings)
+- Install Keythings from Chrome Web Store
 - Refresh the page
 - Check if wallet is locked
+- Ensure you're on a supported browser (Chrome, Brave, Edge)
 
 #### Anchor Pool Creation Failed
 **Common Causes**:
@@ -396,14 +398,24 @@ A: Treat LP tokens like any crypto asset. Losing them means losing access to you
 
 ### Technical
 
-**Q: Why does Keeta require localhost:3000?**
-A: Keythings wallet extension only works with allowlisted URLs. Localhost:3000 is on the allowlist for development/testing.
+**Q: How do I install Keythings wallet?**
+A: Install Keythings from the Chrome Web Store. It works with Chrome, Brave, and Edge browsers. The wallet supports custom resolver switching, allowing you to add Silverback as a swap provider directly in the wallet.
 
 **Q: What is slippage tolerance?**
 A: The maximum price change you'll accept. If price moves more than your tolerance between when you submit and when transaction executes, it will fail.
 
 **Q: Why do I need to approve tokens?**
 A: ERC-20 tokens require you to grant permission for smart contracts to spend them. This is a one-time transaction per token per contract.
+
+**Q: Can I transfer between Base and Keeta networks?**
+A: Yes! Keythings wallet now supports Base ↔ KTA transfers. You can bridge assets between Base network and Keeta network directly within the Keythings wallet.
+
+**Q: What resolvers are available in Keythings?**
+A: Keythings comes with default resolvers and lets you add custom ones. Available resolvers include:
+- **Default** (built-in)
+- **Alpaca DEX**
+- **Murphy**
+- **Silverback** (add our resolver to access our pools)
 
 ---
 
